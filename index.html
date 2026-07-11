@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>果嶺筆記 GreenNotes｜高爾夫練習夥伴</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@600;700;900&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --fairway:#1B3B2C;      /* 深墨綠：主色 */
+  --green:#2F7D4F;        /* 草地綠：強調 */
+  --sand:#F3EEE2;         /* 沙坑米：背景 */
+  --card:#FFFFFF;
+  --ink:#22261F;
+  --ink-soft:#6B7265;
+  --flag:#C64B3C;         /* 旗桿紅：僅用於收藏/重點 */
+  --line:#E3DCCB;
+  --radius:14px;
+  --nav-h:64px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:'Noto Sans TC',-apple-system,sans-serif;
+  background:var(--sand);
+  color:var(--ink);
+  min-height:100vh;
+  padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 16px);
+}
+/* ---------- 頂部記分卡風格標頭 ---------- */
+header{
+  background:var(--fairway);
+  color:#F5F2E8;
+  padding:calc(14px + env(safe-area-inset-top)) 18px 14px;
+  position:sticky;top:0;z-index:20;
+}
+.brand{display:flex;align-items:baseline;gap:10px}
+.brand h1{font-family:'Noto Serif TC',serif;font-weight:900;font-size:1.35rem;letter-spacing:.04em}
+.brand .en{font-size:.7rem;letter-spacing:.22em;text-transform:uppercase;color:#B9C9B4}
+.scoreline{display:flex;gap:14px;margin-top:8px;font-size:.72rem;color:#B9C9B4}
+.scoreline b{color:#F5F2E8;font-size:.95rem;font-family:'Noto Serif TC',serif;margin-right:3px}
+/* ---------- 分頁容器 ---------- */
+main{padding:16px 16px 8px;max-width:640px;margin:0 auto}
+.page{display:none;animation:fade .25s ease}
+.page.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+h2.section{
+  font-family:'Noto Serif TC',serif;font-weight:700;font-size:1.05rem;
+  margin:4px 0 12px;display:flex;align-items:center;gap:8px;
+}
+h2.section::before{content:"";width:4px;height:18px;background:var(--green);border-radius:2px}
+/* ---------- 通用元件 ---------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  background:var(--green);color:#fff;border:none;border-radius:10px;
+  padding:10px 16px;font-size:.9rem;font-weight:500;font-family:inherit;cursor:pointer;
+}
+.btn:active{transform:scale(.97)}
+.btn.ghost{background:transparent;color:var(--green);border:1.5px solid var(--green)}
+.btn.small{padding:6px 10px;font-size:.78rem;border-radius:8px}
+.btn.danger{background:transparent;color:var(--flag);border:1.5px solid var(--flag)}
+input[type=text],input[type=url],input[type=date],textarea,select{
+  width:100%;border:1.5px solid var(--line);border-radius:10px;
+  padding:10px 12px;font-size:.9rem;font-family:inherit;background:#FBF9F3;color:var(--ink);
+}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--green);outline-offset:1px;border-color:var(--green)}
+textarea{min-height:90px;resize:vertical}
+label.f{display:block;font-size:.75rem;color:var(--ink-soft);margin:10px 0 5px;font-weight:500}
+.row{display:flex;gap:8px}
+.row>*{flex:1}
+/* Tee 標記分類籤：像球場發球台色標 */
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.chip{
+  border:1.5px solid var(--line);background:var(--card);color:var(--ink-soft);
+  border-radius:999px;padding:6px 13px;font-size:.78rem;cursor:pointer;font-family:inherit;
+  display:inline-flex;align-items:center;gap:6px;
+}
+.chip .tee{width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.55}
+.chip.on{background:var(--fairway);border-color:var(--fairway);color:#F5F2E8}
+.chip.on .tee{opacity:1;background:#8FD3A5}
+.search{position:relative;margin-bottom:12px}
+.search input{padding-left:36px}
+.search::before{content:"⌕";position:absolute;left:12px;top:50%;transform:translateY(-50%);font-size:1.1rem;color:var(--ink-soft)}
+.empty{
+  text-align:center;color:var(--ink-soft);padding:36px 16px;font-size:.85rem;line-height:1.7;
+  border:1.5px dashed var(--line);border-radius:var(--radius);background:rgba(255,255,255,.5);
+}
+.empty b{display:block;font-family:'Noto Serif TC',serif;color:var(--ink);font-size:1rem;margin-bottom:4px}
+.tag{
+  display:inline-block;background:#EAF3EC;color:var(--green);
+  border-radius:6px;padding:2px 8px;font-size:.7rem;font-weight:500;margin-right:5px;
+}
+.meta{font-size:.72rem;color:var(--ink-soft)}
+/* ---------- 教學影片卡片 ---------- */
+.vid-card{display:flex;gap:12px;align-items:flex-start}
+.vid-thumb{
+  width:104px;height:64px;flex:none;border-radius:8px;background:var(--fairway);
+  background-size:cover;background-position:center;position:relative;overflow:hidden;
+}
+.vid-thumb::after{
+  content:"▶";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:.9rem;background:rgba(0,0,0,.22);
+}
+.vid-body{flex:1;min-width:0}
+.vid-body h3{font-size:.9rem;font-weight:700;line-height:1.4;margin-bottom:4px;word-break:break-word}
+.fav{
+  background:none;border:none;font-size:1.25rem;cursor:pointer;color:#CFC8B6;flex:none;padding:2px;
+}
+.fav.on{color:var(--flag)}
+.vid-actions{margin-top:8px;display:flex;gap:8px}
+/* ---------- 日記時間線 ---------- */
+.tl-day{margin-bottom:18px}
+.tl-date{
+  font-family:'Noto Serif TC',serif;font-weight:700;font-size:.85rem;
+  display:flex;align-items:center;gap:8px;margin-bottom:8px;color:var(--fairway);
+}
+.tl-date::after{content:"";flex:1;height:1px;background:var(--line)}
+.note-text{font-size:.88rem;line-height:1.75;white-space:pre-wrap;margin:6px 0}
+/* ---------- 我的影片 ---------- */
+video{width:100%;border-radius:10px;background:#000;display:block}
+.speed{display:flex;gap:6px;margin-top:8px}
+.speed button{
+  flex:1;border:1.5px solid var(--line);background:var(--card);border-radius:8px;
+  padding:7px 0;font-size:.78rem;font-family:inherit;cursor:pointer;color:var(--ink-soft);
+}
+.speed button.on{background:var(--fairway);color:#fff;border-color:var(--fairway)}
+.notice{
+  background:#FDF6E7;border:1px solid #EBD9A8;border-radius:10px;
+  padding:10px 12px;font-size:.76rem;color:#7A6420;line-height:1.6;margin-bottom:12px;
+}
+/* ---------- 總覽 ---------- */
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.stat{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:14px;text-align:center;
+}
+.stat b{display:block;font-family:'Noto Serif TC',serif;font-size:1.7rem;color:var(--fairway)}
+.stat span{font-size:.72rem;color:var(--ink-soft)}
+/* ---------- 底部導航 ---------- */
+nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:30;
+  background:var(--card);border-top:1px solid var(--line);
+  display:flex;height:calc(var(--nav-h) + env(safe-area-inset-bottom));
+  padding-bottom:env(safe-area-inset-bottom);
+}
+nav button{
+  flex:1;background:none;border:none;font-family:inherit;cursor:pointer;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  font-size:.68rem;color:var(--ink-soft);
+}
+nav button .ic{font-size:1.25rem;line-height:1}
+nav button.on{color:var(--fairway);font-weight:700}
+nav button.on .ic{transform:translateY(-1px)}
+/* 彈窗 */
+dialog{
+  border:none;border-radius:16px;padding:0;width:min(92vw,480px);
+  box-shadow:0 20px 60px rgba(0,0,0,.25);
+}
+dialog::backdrop{background:rgba(27,59,44,.45)}
+.dlg-head{background:var(--fairway);color:#F5F2E8;padding:14px 18px;font-family:'Noto Serif TC',serif;font-weight:700}
+.dlg-body{padding:16px 18px 18px}
+.dlg-foot{display:flex;gap:10px;padding:0 18px 18px}
+.dlg-foot .btn{flex:1}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand" style="justify-content:space-between;width:100%;display:flex;align-items:baseline">
+    <span style="display:flex;align-items:baseline;gap:10px">
+      <h1>果嶺筆記</h1><span class="en">GreenNotes · Golf Journal</span>
+    </span>
+    <button onclick="openSettings()" title="設定"
+      style="background:none;border:none;color:#B9C9B4;font-size:1.1rem;cursor:pointer;padding:2px">⚙︎</button>
+  </div>
+  <div class="scoreline">
+    <span><b id="sc-vids">0</b>教學影片</span>
+    <span><b id="sc-notes">0</b>練球記錄</span>
+    <span><b id="sc-mine">0</b>我的揮桿</span>
+  </div>
+</header>
+
+<main>
+
+<!-- ══════════ 頁 1：教學影片庫 ══════════ -->
+<section class="page active" id="page-library">
+  <h2 class="section">教學影片庫</h2>
+  <div class="search"><input type="text" id="lib-search" placeholder="搜尋影片標題或筆記…"></div>
+  <div class="chips" id="lib-chips"></div>
+  <button class="btn" style="width:100%;margin-bottom:14px" onclick="openVidDialog()">＋ 收藏一支教學影片</button>
+  <div id="lib-list"></div>
+</section>
+
+<!-- ══════════ 頁 2：練球日記 ══════════ -->
+<section class="page" id="page-journal">
+  <h2 class="section">練球日記</h2>
+  <div class="search"><input type="text" id="jr-search" placeholder="搜尋日記內容…"></div>
+  <div class="chips" id="jr-chips"></div>
+  <button class="btn" style="width:100%;margin-bottom:14px" onclick="openNoteDialog()">＋ 寫下今天的練球心得</button>
+  <div id="jr-list"></div>
+</section>
+
+<!-- ══════════ 頁 3：我的揮桿 ══════════ -->
+<section class="page" id="page-mine">
+  <h2 class="section">我的揮桿影片</h2>
+  <div class="notice" id="mine-notice">
+    ⛳ 尚未連結 Google 雲端。點右上角 ⚙︎ 完成設定後，就能在這裡直接上傳影片到你自己的雲端硬碟，永久保存並以慢動作播放。
+  </div>
+  <button class="btn" style="width:100%;margin-bottom:8px" onclick="cloudUploadClick()">＋ 上傳影片到我的 Google 雲端</button>
+  <input type="file" id="mine-file-cloud" accept="video/*" hidden>
+  <div class="row" style="margin-bottom:14px">
+    <button class="btn ghost small" onclick="openMineDialog()">貼影片連結</button>
+    <button class="btn ghost small" onclick="document.getElementById('mine-file').click()">本機暫存（當場回看）</button>
+  </div>
+  <input type="file" id="mine-file" accept="video/*" hidden>
+  <div id="mine-list"></div>
+</section>
+
+<!-- ══════════ 頁 4：進度總覽 ══════════ -->
+<section class="page" id="page-stats">
+  <h2 class="section">進度總覽</h2>
+  <div class="stats">
+    <div class="stat"><b id="st-month">0</b><span>本月練球次數</span></div>
+    <div class="stat"><b id="st-fav">0</b><span>收藏的重點影片</span></div>
+    <div class="stat"><b id="st-total">0</b><span>累計練球記錄</span></div>
+    <div class="stat"><b id="st-vid">0</b><span>累計揮桿影片</span></div>
+  </div>
+  <h2 class="section" style="margin-top:18px">每次練球總整理</h2>
+  <div id="st-sessions"></div>
+</section>
+
+</main>
+
+<!-- 底部導航 -->
+<nav>
+  <button class="on" data-page="library"><span class="ic">🎬</span>教學庫</button>
+  <button data-page="journal"><span class="ic">📓</span>練球日記</button>
+  <button data-page="mine"><span class="ic">🏌️</span>我的揮桿</button>
+  <button data-page="stats"><span class="ic">📊</span>總覽</button>
+</nav>
+
+<!-- 新增教學影片彈窗 -->
+<dialog id="dlg-vid">
+  <div class="dlg-head">收藏教學影片</div>
+  <div class="dlg-body">
+    <label class="f">影片連結（YouTube / Instagram / 其他）</label>
+    <input type="url" id="v-url" placeholder="https://…" inputmode="url">
+    <label class="f">標題</label>
+    <input type="text" id="v-title" placeholder="例：下桿時髖部先轉的三個練習">
+    <label class="f">分類</label>
+    <select id="v-cat"></select>
+    <label class="f">備註（選填）</label>
+    <input type="text" id="v-note" placeholder="例：練前必看，注意 2:15 的示範">
+  </div>
+  <div class="dlg-foot">
+    <button class="btn ghost" onclick="dlgVid.close()">取消</button>
+    <button class="btn" onclick="saveVid()">儲存</button>
+  </div>
+</dialog>
+
+<!-- 新增日記彈窗 -->
+<dialog id="dlg-note">
+  <div class="dlg-head">練球心得</div>
+  <div class="dlg-body">
+    <label class="f">日期</label>
+    <input type="date" id="n-date">
+    <label class="f">練習主題（可複選）</label>
+    <div class="chips" id="n-tags" style="margin-bottom:0"></div>
+    <label class="f">今天的想法、發現、要調整的地方</label>
+    <textarea id="n-text" placeholder="例：今天發現上桿太快導致重心不穩，下次試著用 3 秒節奏…"></textarea>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn ghost" onclick="dlgNote.close()">取消</button>
+    <button class="btn" onclick="saveNote()">儲存</button>
+  </div>
+</dialog>
+
+<!-- 設定彈窗 -->
+<dialog id="dlg-set">
+  <div class="dlg-head">連結 Google 雲端</div>
+  <div class="dlg-body">
+    <p class="meta" style="line-height:1.7;margin-bottom:6px">
+      貼上你在 Google Cloud Console 申請的 OAuth 用戶端 ID（一次性設定，免費）。
+      App 只會存取「它自己上傳」的檔案，不會碰你雲端裡的其他東西。
+    </p>
+    <label class="f">OAuth 用戶端 ID</label>
+    <input type="text" id="set-cid" placeholder="xxxxxxxx.apps.googleusercontent.com">
+    <div id="set-status" class="meta" style="margin-top:10px">狀態：未連結</div>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn ghost" onclick="document.getElementById('dlg-set').close()">關閉</button>
+    <button class="btn" onclick="saveSettings()">儲存並登入</button>
+  </div>
+</dialog>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<!-- 貼上揮桿影片連結彈窗 -->
+<dialog id="dlg-mine">
+  <div class="dlg-head">加入揮桿影片</div>
+  <div class="dlg-body">
+    <label class="f">影片連結（YouTube 非公開 / Google Drive）</label>
+    <input type="url" id="m-url" placeholder="https://youtu.be/…" inputmode="url">
+    <label class="f">拍攝日期</label>
+    <input type="date" id="m-date">
+    <label class="f">備註（選填）</label>
+    <input type="text" id="m-note" placeholder="例：7 號鐵，練習場第 3 籃">
+  </div>
+  <div class="dlg-foot">
+    <button class="btn ghost" onclick="document.getElementById('dlg-mine').close()">取消</button>
+    <button class="btn" onclick="saveMineLink()">儲存</button>
+  </div>
+</dialog>
+
+<!-- 練球場次詳情彈窗 -->
+<dialog id="dlg-session">
+  <div class="dlg-head" id="ss-title">練球內容</div>
+  <div class="dlg-body" id="ss-body" style="max-height:65vh;overflow-y:auto"></div>
+  <div class="dlg-foot">
+    <button class="btn" style="flex:1" onclick="document.getElementById('dlg-session').close()">關閉</button>
+  </div>
+</dialog>
+
+<script>
+/* ═══════════ 儲存層：Claude 預覽用 window.storage，自架/本機自動改用 localStorage ═══════════ */
+const store = {
+  async get(k){
+    if (window.storage) { try { const r = await window.storage.get(k); return r ? JSON.parse(r.value) : null; } catch(e){ return null; } }
+    try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch(e){ return null; }
+  },
+  async set(k, v){
+    const s = JSON.stringify(v);
+    if (window.storage) { try { await window.storage.set(k, s); return; } catch(e){} }
+    try { localStorage.setItem(k, s); } catch(e){}
+  }
+};
+
+/* ═══════════ 狀態 ═══════════ */
+const CATS = ['揮桿技巧','基本動作','短桿','推桿','開球','體能與心態','賽前準備'];
+let vids = [], notes = [], mine = []; // mine 只存中繼資料，影片檔為工作階段暫存
+let libFilter = '全部', jrFilter = '全部';
+const $ = id => document.getElementById(id);
+const dlgVid = $('dlg-vid'), dlgNote = $('dlg-note');
+const esc = s => (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ═══════════ 初始化 ═══════════ */
+(async function init(){
+  vids  = await store.get('vids')  || [];
+  notes = await store.get('notes') || [];
+  mine  = await store.get('mine')  || [];
+  gcfg  = await store.get('gcfg')  || { clientId:'', folderId:'' };
+  $('mine-file-cloud').addEventListener('change', cloudUpload);
+  updateMineNotice();
+  // 分類籤
+  renderChips('lib-chips', ['全部',...CATS], c => { libFilter=c; renderLib(); }, ()=>libFilter);
+  renderChips('jr-chips',  ['全部',...CATS], c => { jrFilter=c; renderJr(); },  ()=>jrFilter);
+  renderChips('n-tags', CATS, ()=>{}, null, true);
+  $('v-cat').innerHTML = CATS.map(c=>`<option>${c}</option>`).join('');
+  $('lib-search').addEventListener('input', renderLib);
+  $('jr-search').addEventListener('input', renderJr);
+  $('mine-file').addEventListener('change', addMine);
+  document.querySelectorAll('nav button').forEach(b=>{
+    b.addEventListener('click', ()=>{
+      document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
+      document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+      b.classList.add('on');
+      $('page-'+b.dataset.page).classList.add('active');
+      if(b.dataset.page==='stats') renderStats();
+    });
+  });
+  renderLib(); renderJr(); renderMine(); renderStats();
+})();
+
+function renderChips(id, list, onPick, getCur, multi=false){
+  const box = $(id);
+  box.innerHTML = '';
+  list.forEach(c=>{
+    const b = document.createElement('button');
+    b.className = 'chip'; b.type='button';
+    b.innerHTML = `<span class="tee"></span>${c}`;
+    if(getCur && getCur()===c) b.classList.add('on');
+    b.addEventListener('click', ()=>{
+      if(multi){ b.classList.toggle('on'); return; }
+      onPick(c);
+      box.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+    });
+    box.appendChild(b);
+  });
+}
+
+/* ═══════════ 教學影片庫 ═══════════ */
+function ytId(url){
+  const m = (url||'').match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/);
+  return m ? m[1] : null;
+}
+function openVidDialog(){ $('v-url').value=$('v-title').value=$('v-note').value=''; dlgVid.showModal(); }
+async function saveVid(){
+  const url = $('v-url').value.trim(), title = $('v-title').value.trim();
+  if(!url && !title){ alert('至少填一個連結或標題喔'); return; }
+  vids.unshift({ id:Date.now(), url, title: title || url, cat: $('v-cat').value, note: $('v-note').value.trim(), fav:false, ts:Date.now() });
+  await store.set('vids', vids);
+  dlgVid.close(); renderLib(); renderStats();
+}
+function renderLib(){
+  const q = $('lib-search').value.trim().toLowerCase();
+  const list = vids.filter(v =>
+    (libFilter==='全部' || v.cat===libFilter) &&
+    (!q || (v.title+v.note).toLowerCase().includes(q))
+  ).sort((a,b)=> (b.fav-a.fav) || (b.ts-a.ts));
+  const box = $('lib-list');
+  if(!list.length){
+    box.innerHTML = `<div class="empty"><b>還沒有收藏影片</b>看到不錯的教學影片，把連結貼進來，<br>練球前就能依分類快速複習。</div>`;
+  } else {
+    box.innerHTML = list.map(v=>{
+      const yt = ytId(v.url);
+      const thumb = yt ? `style="background-image:url('https://i.ytimg.com/vi/${yt}/mqdefault.jpg')"` : '';
+      return `<div class="card vid-card">
+        <div class="vid-thumb" ${thumb}></div>
+        <div class="vid-body">
+          <h3>${esc(v.title)}</h3>
+          <span class="tag">${esc(v.cat)}</span>${v.note?`<span class="meta">${esc(v.note)}</span>`:''}
+          <div class="vid-actions">
+            ${v.url?`<a class="btn small" href="${esc(v.url)}" target="_blank" rel="noopener">▶ 觀看</a>`:''}
+            <button class="btn small danger" onclick="delVid(${v.id})">刪除</button>
+          </div>
+        </div>
+        <button class="fav ${v.fav?'on':''}" title="收藏為練前必看" onclick="toggleFav(${v.id})">♥</button>
+      </div>`;
+    }).join('');
+  }
+  $('sc-vids').textContent = vids.length;
+}
+async function toggleFav(id){ const v=vids.find(x=>x.id===id); if(v){ v.fav=!v.fav; await store.set('vids',vids); renderLib(); renderStats(); } }
+async function delVid(id){ if(!confirm('確定刪除這支影片收藏？')) return; vids=vids.filter(x=>x.id!==id); await store.set('vids',vids); renderLib(); renderStats(); }
+
+/* ═══════════ 練球日記 ═══════════ */
+function openNoteDialog(){
+  $('n-date').value = new Date().toISOString().slice(0,10);
+  $('n-text').value = '';
+  document.querySelectorAll('#n-tags .chip').forEach(x=>x.classList.remove('on'));
+  dlgNote.showModal();
+}
+async function saveNote(){
+  const text = $('n-text').value.trim();
+  if(!text){ alert('寫一點今天的心得吧'); return; }
+  const tags = [...document.querySelectorAll('#n-tags .chip.on')].map(b=>b.textContent.trim());
+  notes.unshift({ id:Date.now(), date: $('n-date').value, tags, text });
+  await store.set('notes', notes);
+  dlgNote.close(); renderJr(); renderStats();
+}
+function renderJr(){
+  const q = $('jr-search').value.trim().toLowerCase();
+  const list = notes.filter(n =>
+    (jrFilter==='全部' || n.tags.includes(jrFilter)) &&
+    (!q || n.text.toLowerCase().includes(q))
+  ).sort((a,b)=> b.date.localeCompare(a.date) || b.id-a.id);
+  const box = $('jr-list');
+  if(!list.length){
+    box.innerHTML = `<div class="empty"><b>日記還是空的</b>每次練完球花一分鐘，<br>記下今天的發現和下次要調整的地方。</div>`;
+  } else {
+    // 依日期分組成時間線
+    const days = {};
+    list.forEach(n => (days[n.date] = days[n.date]||[]).push(n));
+    box.innerHTML = Object.keys(days).sort().reverse().map(d=>{
+      const w = ['日','一','二','三','四','五','六'][new Date(d+'T00:00').getDay()];
+      return `<div class="tl-day">
+        <div class="tl-date">${d}（${w}）</div>
+        ${days[d].map(n=>`<div class="card">
+          ${n.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
+          <p class="note-text">${esc(n.text)}</p>
+          <button class="btn small danger" onclick="delNote(${n.id})">刪除</button>
+        </div>`).join('')}
+      </div>`;
+    }).join('');
+  }
+  $('sc-notes').textContent = notes.length;
+}
+async function delNote(id){ if(!confirm('確定刪除這則記錄？')) return; notes=notes.filter(x=>x.id!==id); await store.set('notes',notes); renderJr(); renderStats(); }
+
+/* ═══════════ Google Drive 串接：在 App 內直接上傳與播放 ═══════════ */
+let gcfg = { clientId:'', folderId:'' };
+let gToken = null, tokenClient = null;
+
+function openSettings(){
+  $('set-cid').value = gcfg.clientId || '';
+  $('set-status').textContent = '狀態：' + (gToken ? '已連結 ✓' : (gcfg.clientId ? '已設定 ID，尚未登入' : '未連結'));
+  $('dlg-set').showModal();
+}
+async function saveSettings(){
+  gcfg.clientId = $('set-cid').value.trim();
+  await store.set('gcfg', gcfg);
+  if(!gcfg.clientId){ alert('請先貼上用戶端 ID'); return; }
+  try{
+    await ensureToken(true);
+    $('set-status').textContent = '狀態：已連結 ✓';
+    updateMineNotice();
+  }catch(e){
+    $('set-status').textContent = '狀態：登入未完成（' + (e.message||'請再試一次') + '）';
+  }
+}
+function ensureToken(interactive=false){
+  return new Promise((resolve, reject)=>{
+    if(gToken) return resolve(gToken);
+    if(!gcfg.clientId) return reject(new Error('尚未設定用戶端 ID'));
+    if(!window.google || !google.accounts){ return reject(new Error('Google 登入元件載入中，請稍候再試')); }
+    tokenClient = tokenClient || google.accounts.oauth2.initTokenClient({
+      client_id: gcfg.clientId,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: ()=>{}
+    });
+    tokenClient.callback = (resp)=>{
+      if(resp.error) return reject(new Error(resp.error));
+      gToken = resp.access_token;
+      setTimeout(()=>{ gToken = null; }, 55*60*1000); // token 約 1 小時後失效
+      updateMineNotice();
+      resolve(gToken);
+    };
+    tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' });
+  });
+}
+function updateMineNotice(){
+  $('mine-notice').innerHTML = gToken
+    ? '⛳ 已連結 Google 雲端 ✓ 影片會上傳到你雲端硬碟的「果嶺筆記」資料夾，永久保存。'
+    : (gcfg.clientId
+      ? '⛳ 已設定 Google 雲端，按上傳時會請你登入授權。'
+      : '⛳ 尚未連結 Google 雲端。點右上角 ⚙︎ 完成設定後，就能在這裡直接上傳影片到你自己的雲端硬碟，永久保存並以慢動作播放。');
+}
+async function ensureFolder(){
+  if(gcfg.folderId) return gcfg.folderId;
+  const h = { Authorization:'Bearer '+gToken };
+  const q = encodeURIComponent("name='果嶺筆記' and mimeType='application/vnd.google-apps.folder' and trashed=false");
+  const found = await (await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, {headers:h})).json();
+  if(found.files && found.files.length){ gcfg.folderId = found.files[0].id; }
+  else{
+    const r = await (await fetch('https://www.googleapis.com/drive/v3/files', {
+      method:'POST', headers:{...h,'Content-Type':'application/json'},
+      body: JSON.stringify({ name:'果嶺筆記', mimeType:'application/vnd.google-apps.folder' })
+    })).json();
+    gcfg.folderId = r.id;
+  }
+  await store.set('gcfg', gcfg);
+  return gcfg.folderId;
+}
+function cloudUploadClick(){
+  if(!gcfg.clientId){ openSettings(); return; }
+  $('mine-file-cloud').click();
+}
+async function cloudUpload(e){
+  const f = e.target.files[0];
+  e.target.value = '';
+  if(!f) return;
+  const btn = document.querySelector('#page-mine .btn');
+  try{
+    btn.textContent = '登入授權中…'; btn.disabled = true;
+    await ensureToken(true);
+    const folder = await ensureFolder();
+    btn.textContent = '上傳中…（影片較大會需要一點時間）';
+    // 可續傳上傳：先建立工作階段，再送檔案內容
+    const meta = { name: `${new Date().toISOString().slice(0,10)}_${f.name}`, parents:[folder] };
+    const init = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+      method:'POST',
+      headers:{ Authorization:'Bearer '+gToken, 'Content-Type':'application/json', 'X-Upload-Content-Type': f.type||'video/mp4' },
+      body: JSON.stringify(meta)
+    });
+    if(!init.ok) throw new Error('建立上傳工作階段失敗');
+    const session = init.headers.get('Location');
+    const up = await fetch(session, { method:'PUT', headers:{ 'Content-Type': f.type||'video/mp4' }, body: f });
+    if(!up.ok) throw new Error('上傳失敗，請檢查網路後重試');
+    const file = await up.json();
+    const id = Date.now();
+    blobs[id] = URL.createObjectURL(f); // 剛上傳完直接可看，不用再下載
+    mine.unshift({ id, driveId:file.id, name:f.name, date:new Date().toISOString().slice(0,10), note:'' });
+    await store.set('mine', mine);
+    renderMine(); renderStats();
+  }catch(err){
+    alert('雲端上傳沒有成功：' + err.message);
+  }finally{
+    btn.textContent = '＋ 上傳影片到我的 Google 雲端'; btn.disabled = false;
+  }
+}
+async function loadDrive(id, btn){
+  const m = mine.find(x=>x.id===id); if(!m || !m.driveId) return;
+  try{
+    if(btn){ btn.textContent = '載入中…'; btn.disabled = true; }
+    await ensureToken(true);
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${m.driveId}?alt=media`, {
+      headers:{ Authorization:'Bearer '+gToken }
+    });
+    if(!r.ok) throw new Error('讀取失敗，可能需要重新登入');
+    blobs[id] = URL.createObjectURL(await r.blob());
+    renderMine();
+  }catch(err){
+    alert('影片載入沒有成功：' + err.message);
+    if(btn){ btn.textContent = '▶ 載入播放'; btn.disabled = false; }
+  }
+}
+
+/* ═══════════ 我的揮桿影片：雲端 / 連結 / 本機 ═══════════ */
+const blobs = {}; // id -> objectURL（僅本次開啟有效）
+function driveId(url){
+  const m = (url||'').match(/drive\.google\.com\/file\/d\/([\w-]+)/);
+  return m ? m[1] : null;
+}
+function openMineDialog(){
+  $('m-url').value = $('m-note').value = '';
+  $('m-date').value = new Date().toISOString().slice(0,10);
+  $('dlg-mine').showModal();
+}
+async function saveMineLink(){
+  const url = $('m-url').value.trim();
+  if(!url){ alert('先貼上影片連結喔'); return; }
+  if(!ytId(url) && !driveId(url)){ alert('目前支援 YouTube 或 Google Drive 的影片連結'); return; }
+  mine.unshift({ id:Date.now(), url, name: ytId(url)?'YouTube 影片':'Drive 影片', date:$('m-date').value, note:$('m-note').value.trim() });
+  await store.set('mine', mine);
+  $('dlg-mine').close();
+  renderMine(); renderStats();
+}
+async function addMine(e){
+  const f = e.target.files[0];
+  if(!f) return;
+  const id = Date.now();
+  blobs[id] = URL.createObjectURL(f);
+  mine.unshift({ id, name:f.name, date:new Date().toISOString().slice(0,10), note:'' });
+  await store.set('mine', mine);
+  e.target.value = '';
+  renderMine(); renderStats();
+}
+/* 依影片類型產生播放器 HTML */
+function mediaHTML(m, compact=false){
+  const src = blobs[m.id];
+  // 雲端影片：已載入 → 原生播放器（可慢動作）；未載入 → 載入按鈕
+  if(m.driveId){
+    if(src){
+      return `<video id="v-${m.id}" src="${src}" controls playsinline></video>
+        ${compact?'':`<div class="speed">
+          ${[0.25,0.5,0.75,1].map(s=>`<button onclick="setSpeed(${m.id},${s},this)" class="${s===1?'on':''}">${s===1?'正常':s+'x'}</button>`).join('')}
+        </div>`}`;
+    }
+    return `<div class="empty" style="padding:18px">影片保存在你的 Google 雲端<br>
+      <button class="btn small" style="margin-top:8px" onclick="loadDrive(${m.id},this)">▶ 載入播放</button></div>`;
+  }
+  const yt = ytId(m.url), dv = driveId(m.url);
+  if(yt){
+    return `<div style="position:relative;padding-top:56.25%;border-radius:10px;overflow:hidden;background:#000">
+        <iframe id="yt-${m.id}" src="https://www.youtube.com/embed/${yt}?enablejsapi=1&playsinline=1&rel=0"
+          style="position:absolute;inset:0;width:100%;height:100%;border:0" allow="autoplay" allowfullscreen></iframe>
+      </div>
+      ${compact?'':`<div class="speed">
+        ${[0.25,0.5,0.75,1].map(s=>`<button onclick="setSpeedYT(${m.id},${s},this)" class="${s===1?'on':''}">${s===1?'正常':s+'x'}</button>`).join('')}
+      </div>`}`;
+  }
+  if(dv){
+    return `<div style="position:relative;padding-top:56.25%;border-radius:10px;overflow:hidden;background:#000">
+        <iframe src="https://drive.google.com/file/d/${dv}/preview"
+          style="position:absolute;inset:0;width:100%;height:100%;border:0" allow="autoplay" allowfullscreen></iframe>
+      </div>
+      ${compact?'':'<div class="meta" style="margin-top:6px">Drive 影片可在播放器內全螢幕檢視（不支援慢動作按鈕，需要慢動作建議改傳 YouTube）</div>'}`;
+  }
+  if(src){
+    return `<video id="v-${m.id}" src="${src}" controls playsinline></video>
+      ${compact?'':`<div class="speed">
+        ${[0.25,0.5,0.75,1].map(s=>`<button onclick="setSpeed(${m.id},${s},this)" class="${s===1?'on':''}">${s===1?'正常':s+'x'}</button>`).join('')}
+      </div>`}`;
+  }
+  return `<div class="empty" style="padding:18px">此為上次的本機暫存檔，需重新選取。<br><label class="btn small ghost" style="margin-top:8px">重新選取影片<input type="file" accept="video/*" hidden onchange="relink(${m.id},this)"></label></div>`;
+}
+function renderMine(){
+  const box = $('mine-list');
+  if(!mine.length){
+    box.innerHTML = `<div class="empty"><b>還沒有揮桿影片</b>錄下自己的揮桿，貼上連結，<br>用慢動作逐格檢視動作細節。</div>`;
+  } else {
+    box.innerHTML = mine.map(m=>`<div class="card">
+        <div class="meta" style="margin-bottom:8px">${m.date}｜${esc(m.name)}</div>
+        ${mediaHTML(m)}
+        <label class="f">這次揮桿的備註</label>
+        <input type="text" value="${esc(m.note)}" placeholder="例：頂點停頓有做出來，但送桿還是太早翻腕"
+               onchange="noteMine(${m.id},this.value)">
+        <div style="margin-top:10px"><button class="btn small danger" onclick="delMine(${m.id})">刪除</button></div>
+      </div>`).join('');
+  }
+  $('sc-mine').textContent = mine.length;
+}
+function setSpeed(id, s, btn){
+  const v = $('v-'+id); if(!v) return;
+  v.playbackRate = s;
+  btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+}
+function setSpeedYT(id, s, btn){
+  const f = $('yt-'+id); if(!f) return;
+  f.contentWindow.postMessage(JSON.stringify({event:'command',func:'setPlaybackRate',args:[s]}), 'https://www.youtube.com');
+  f.contentWindow.postMessage(JSON.stringify({event:'command',func:'playVideo',args:[]}), 'https://www.youtube.com');
+  btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+}
+function relink(id, input){
+  const f = input.files[0]; if(!f) return;
+  blobs[id] = URL.createObjectURL(f);
+  renderMine();
+}
+async function noteMine(id, val){ const m=mine.find(x=>x.id===id); if(m){ m.note=val; await store.set('mine',mine); } }
+async function delMine(id){ if(!confirm('確定刪除這支影片記錄？')) return; mine=mine.filter(x=>x.id!==id); delete blobs[id]; await store.set('mine',mine); renderMine(); renderStats(); }
+
+/* ═══════════ 進度總覽 ═══════════ */
+function renderStats(){
+  const ym = new Date().toISOString().slice(0,7);
+  const monthDays = new Set(notes.filter(n=>n.date.startsWith(ym)).map(n=>n.date));
+  $('st-month').textContent = monthDays.size;
+  $('st-fav').textContent   = vids.filter(v=>v.fav).length;
+  $('st-total').textContent = notes.length;
+  $('st-vid').textContent   = mine.length;
+  const recent = notes.slice(0,3);
+  $('st-recent').innerHTML = recent.length
+    ? recent.map(n=>`<div>· ${n.date}｜${esc(n.text.slice(0,32))}${n.text.length>32?'…':''}</div>`).join('')
+    : '尚無記錄';
+
+  // 每次練球總整理：依日期分組成場次卡片
+  const days = {};
+  notes.forEach(n => (days[n.date] = days[n.date]||[]).push(n));
+  const dates = Object.keys(days).sort().reverse();
+  $('st-sessions').innerHTML = dates.length
+    ? dates.map(d=>{
+        const list = days[d];
+        const tags = [...new Set(list.flatMap(n=>n.tags))];
+        const vidCount = mine.filter(m=>m.date===d).length;
+        const w = ['日','一','二','三','四','五','六'][new Date(d+'T00:00').getDay()];
+        return `<button class="card" style="width:100%;text-align:left;cursor:pointer;font-family:inherit;display:block" onclick="showSession('${d}')">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <b style="font-family:'Noto Serif TC',serif;font-size:.95rem;color:var(--fairway)">${d}（${w}）</b>
+            <span class="meta">${list.length} 則記錄${vidCount?`｜${vidCount} 支影片`:''} ›</span>
+          </div>
+          <div style="margin-top:6px">${tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')||'<span class="meta">未標主題</span>'}</div>
+          <p class="meta" style="margin-top:6px;line-height:1.6">${esc(list[list.length-1].text.slice(0,40))}${list[list.length-1].text.length>40?'…':''}</p>
+        </button>`;
+      }).join('')
+    : `<div class="empty"><b>還沒有練球場次</b>在練球日記寫下記錄後，<br>這裡會自動整理成一次一次的練球總覽。</div>`;
+}
+
+/* 場次詳情 */
+function showSession(d){
+  const w = ['日','一','二','三','四','五','六'][new Date(d+'T00:00').getDay()];
+  $('ss-title').textContent = `${d}（${w}）練球內容`;
+  const dayNotes = notes.filter(n=>n.date===d).sort((a,b)=>a.id-b.id);
+  const dayVids  = mine.filter(m=>m.date===d);
+  $('ss-body').innerHTML =
+    dayNotes.map(n=>`<div class="card" style="margin-bottom:10px">
+      ${n.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
+      <p class="note-text">${esc(n.text)}</p>
+    </div>`).join('') +
+    (dayVids.length ? `<label class="f">當天的揮桿影片</label>` + dayVids.map(m=>`<div class="card" style="margin-bottom:10px">
+        <div class="meta" style="margin-bottom:6px">${esc(m.name)}</div>
+        ${mediaHTML(m, true)}
+        ${m.note?`<p class="note-text" style="margin-bottom:0">${esc(m.note)}</p>`:''}
+      </div>`).join('') : '');
+  $('dlg-session').showModal();
+}
+</script>
+</body>
+</html>
