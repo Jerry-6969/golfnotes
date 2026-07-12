@@ -219,6 +219,7 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
     <div id="up-bar" style="height:100%;width:0%;background:var(--green);transition:width .3s"></div>
   </div>
   <input type="file" id="mine-file-cloud" accept="video/*" hidden>
+  <button class="btn ghost" style="width:100%;margin-bottom:8px" onclick="pickFromDrive()">☁️ 從我的 Google 雲端挑選影片（免重傳）</button>
   <div class="row" style="margin-bottom:14px">
     <button class="btn ghost small" onclick="openMineDialog()">貼影片連結</button>
     <button class="btn ghost small" onclick="document.getElementById('mine-file').click()">本機暫存（當場回看）</button>
@@ -294,6 +295,8 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
     </p>
     <label class="f">OAuth 用戶端 ID</label>
     <input type="text" id="set-cid" placeholder="xxxxxxxx.apps.googleusercontent.com">
+    <label class="f">API 金鑰（選填，啟用「從雲端挑選影片」）</label>
+    <input type="text" id="set-key" placeholder="AIza… 開頭的一串">
     <div id="set-status" class="meta" style="margin-top:10px">狀態：未連結</div>
   </div>
   <div class="dlg-foot">
@@ -303,6 +306,7 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
 </dialog>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js" async defer></script>
 <!-- 貼上揮桿影片連結彈窗 -->
 <dialog id="dlg-mine">
   <div class="dlg-head">加入揮桿影片</div>
@@ -558,11 +562,13 @@ let gToken = null, tokenClient = null;
 
 function openSettings(){
   $('set-cid').value = gcfg.clientId || '';
+  $('set-key').value = gcfg.apiKey || '';
   $('set-status').textContent = '狀態：' + (gToken ? '已連結 ✓' : (gcfg.clientId ? '已設定 ID，尚未登入' : '未連結'));
   $('dlg-set').showModal();
 }
 async function saveSettings(){
   gcfg.clientId = $('set-cid').value.trim();
+  gcfg.apiKey = $('set-key').value.trim();
   await store.set('gcfg', gcfg);
   if(!gcfg.clientId){ alert('請先貼上用戶端 ID'); return; }
   try{
@@ -646,7 +652,54 @@ function cloudUploadClick(){
   // 第二步：已有授權，直接開檔案選擇
   $('mine-file-cloud').click();
 }
+/* ═══════════ 從雲端挑選既有影片（Google Picker，免重傳） ═══════════ */
+let pickerReady = false;
+function loadPicker(){
+  return new Promise((res, rej)=>{
+    if(pickerReady) return res();
+    if(!window.gapi) return rej(new Error('Google 元件載入中，請稍候再試'));
+    gapi.load('picker', { callback: ()=>{ pickerReady = true; res(); }, onerror: ()=>rej(new Error('Picker 載入失敗')) });
+  });
+}
+async function pickFromDrive(){
+  if(!gcfg.clientId){ openSettings(); return; }
+  if(!gcfg.apiKey){
+    alert('「從雲端挑選」需要多填一個 API 金鑰（免費、一次性）。申請方式：Google Cloud Console → API 和服務 → 憑證 → 建立憑證 → API 金鑰，並在「已啟用的 API」加入 Google Picker API。拿到後貼進 ⚙︎ 設定。');
+    openSettings(); return;
+  }
+  try{
+    await ensureToken(true);
+    await loadPicker();
+    const view = new google.picker.DocsView(google.picker.ViewId.DOCS_VIDEOS)
+      .setIncludeFolders(true);
+    new google.picker.PickerBuilder()
+      .setOAuthToken(gToken)
+      .setDeveloperKey(gcfg.apiKey)
+      .addView(view)
+      .setTitle('挑選你的揮桿影片')
+      .setCallback(async (data)=>{
+        if(data.action === google.picker.Action.PICKED){
+          data.docs.forEach((d, i)=>{
+            mine.unshift({ id: Date.now()+i, driveId: d.id, name: d.name, date: new Date().toISOString().slice(0,10), note:'' });
+          });
+          await store.set('mine', mine);
+          renderMine(); renderStats();
+        }
+      })
+      .build().setVisible(true);
+  }catch(err){
+    alert('挑選沒有成功：' + err.message);
+  }
+}
+
 let uploading = false;
+let wakeLock = null;
+async function keepAwake(on){
+  try{
+    if(on && navigator.wakeLock){ wakeLock = await navigator.wakeLock.request('screen'); }
+    else if(wakeLock){ await wakeLock.release(); wakeLock = null; }
+  }catch(e){ /* 不支援就算了，僅提示使用者保持螢幕開啟 */ }
+}
 function putWithProgress(url, file, onProg){
   return new Promise((res, rej)=>{
     const x = new XMLHttpRequest();
@@ -669,8 +722,9 @@ async function cloudUpload(e){
     await ensureToken();
     const folder = await ensureFolder();
     uploading = true; btn.disabled = true;
+    await keepAwake(true);
     wrap.style.display = 'block'; bar.style.width = '0%';
-    btn.textContent = `上傳中 0%（共 ${mb.toFixed(0)} MB）`;
+    btn.textContent = `上傳中 0%（共 ${mb.toFixed(0)} MB）— 請保持螢幕開啟`;
     // 可續傳上傳：先建立工作階段，再送檔案內容
     const meta = { name: `${new Date().toISOString().slice(0,10)}_${f.name}`, parents:[folder] };
     const init = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
@@ -699,6 +753,7 @@ async function cloudUpload(e){
     updateMineNotice();
   }finally{
     uploading = false; btn.disabled = false;
+    keepAwake(false);
   }
 }
 async function loadDrive(id, btn){
