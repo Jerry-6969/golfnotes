@@ -118,6 +118,11 @@ label.f{display:block;font-size:.75rem;color:var(--ink-soft);margin:10px 0 5px;f
 }
 .tl-date::after{content:"";flex:1;height:1px;background:var(--line)}
 .note-text{font-size:.88rem;line-height:1.75;white-space:pre-wrap;margin:6px 0}
+ul.blt{list-style:none;margin:2px 0}
+ul.blt li{
+  font-size:.88rem;line-height:1.7;padding-left:16px;position:relative;margin-bottom:4px;
+}
+ul.blt li::before{content:"";position:absolute;left:2px;top:.68em;width:6px;height:6px;border-radius:50%;background:var(--green)}
 /* ---------- 我的影片 ---------- */
 video{width:100%;border-radius:10px;background:#000;display:block}
 .speed{display:flex;gap:6px;margin-top:8px}
@@ -209,7 +214,7 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
   <div class="notice" id="mine-notice">
     ⛳ 尚未連結 Google 雲端。點右上角 ⚙︎ 完成設定後，就能在這裡直接上傳影片到你自己的雲端硬碟，永久保存並以慢動作播放。
   </div>
-  <button class="btn" style="width:100%;margin-bottom:8px" onclick="cloudUploadClick()">＋ 上傳影片到我的 Google 雲端</button>
+  <button class="btn" id="btn-cloud" style="width:100%;margin-bottom:8px" onclick="cloudUploadClick()">＋ 上傳影片到我的 Google 雲端</button>
   <input type="file" id="mine-file-cloud" accept="video/*" hidden>
   <div class="row" style="margin-bottom:14px">
     <button class="btn ghost small" onclick="openMineDialog()">貼影片連結</button>
@@ -267,10 +272,8 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
   <div class="dlg-body">
     <label class="f">日期</label>
     <input type="date" id="n-date">
-    <label class="f">練習主題（可複選）</label>
-    <div class="chips" id="n-tags" style="margin-bottom:0"></div>
-    <label class="f">今天的想法、發現、要調整的地方</label>
-    <textarea id="n-text" placeholder="例：今天發現上桿太快導致重心不穩，下次試著用 3 秒節奏…"></textarea>
+    <label class="f">今天的想法（口述或打字都行，我會自動整理成列點）</label>
+    <textarea id="n-text" placeholder="直接用語音輸入整段講完也沒問題，儲存時會自動分成列點並加上 #標籤"></textarea>
   </div>
   <div class="dlg-foot">
     <button class="btn ghost" onclick="dlgNote.close()">取消</button>
@@ -355,8 +358,6 @@ const esc = s => (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'
   updateMineNotice();
   // 分類籤
   renderChips('lib-chips', ['全部',...CATS], c => { libFilter=c; renderLib(); }, ()=>libFilter);
-  renderChips('jr-chips',  ['全部',...CATS], c => { jrFilter=c; renderJr(); },  ()=>jrFilter);
-  renderChips('n-tags', CATS, ()=>{}, null, true);
   $('v-cat').innerHTML = CATS.map(c=>`<option>${c}</option>`).join('');
   $('lib-search').addEventListener('input', renderLib);
   $('jr-search').addEventListener('input', renderJr);
@@ -436,22 +437,60 @@ function renderLib(){
 async function toggleFav(id){ const v=vids.find(x=>x.id===id); if(v){ v.fav=!v.fav; await store.set('vids',vids); renderLib(); renderStats(); } }
 async function delVid(id){ if(!confirm('確定刪除這支影片收藏？')) return; vids=vids.filter(x=>x.id!==id); await store.set('vids',vids); renderLib(); renderStats(); }
 
-/* ═══════════ 練球日記 ═══════════ */
+/* ═══════════ 練球日記：口述自動整理成列點 + 自動 hashtag ═══════════ */
+const TAG_RULES = [
+  ['#上桿',['上桿','起桿','頂點']],
+  ['#下桿',['下桿','過渡','擊球']],
+  ['#節奏',['節奏','太快','太慢','速度','停頓']],
+  ['#手腕',['手腕','翻腕','腕']],
+  ['#轉髖',['轉髖','髖','骨盆','轉身']],
+  ['#重心',['重心','蹲','平衡','站穩']],
+  ['#握桿',['握桿','握把','虎口']],
+  ['#站姿瞄準',['站姿','瞄準','對準','球位','setup']],
+  ['#手肘',['手肘','肋骨','夾緊']],
+  ['#推桿',['推桿','果嶺']],
+  ['#短桿',['短桿','切球','切桿','沙坑','挖起桿','wedge']],
+  ['#開球',['開球','一號木','木桿','tee']],
+  ['#鐵桿',['鐵桿','號鐵']],
+  ['#心態',['心態','緊張','放鬆','壓力','專注','信心']],
+];
+function autoTags(t){
+  const r = TAG_RULES.filter(([,kws]) => kws.some(k => t.includes(k))).map(([tag]) => tag);
+  return r.length ? r : ['#練球'];
+}
+function splitBullets(t){
+  const CONN = /^(但|不過|所以|因此|因為|讓|使|而且|然後|接著|並且|就|才|再|以及|還有|可是|結果)/;
+  const out = [];
+  t.split(/[。．！!？?；;\n]+/).map(s=>s.trim()).filter(Boolean).forEach(seg=>{
+    if(seg.length <= 26){ out.push(seg); return; }
+    let cur = '';
+    seg.split(/[，,]/).map(s=>s.trim()).filter(Boolean).forEach(p=>{
+      if(!cur){ cur = p; return; }
+      if(CONN.test(p) || p.length < 6 || (cur.length + p.length) < 18){ cur += '，' + p; }
+      else{ out.push(cur); cur = p; }
+    });
+    if(cur) out.push(cur);
+  });
+  return out.length ? out : [t.trim()];
+}
 function openNoteDialog(){
   $('n-date').value = new Date().toISOString().slice(0,10);
   $('n-text').value = '';
-  document.querySelectorAll('#n-tags .chip').forEach(x=>x.classList.remove('on'));
   dlgNote.showModal();
 }
 async function saveNote(){
   const text = $('n-text').value.trim();
   if(!text){ alert('寫一點今天的心得吧'); return; }
-  const tags = [...document.querySelectorAll('#n-tags .chip.on')].map(b=>b.textContent.trim());
-  notes.unshift({ id:Date.now(), date: $('n-date').value, tags, text });
+  notes.unshift({ id:Date.now(), date: $('n-date').value, tags: autoTags(text), text, bullets: splitBullets(text) });
   await store.set('notes', notes);
   dlgNote.close(); renderJr(); renderStats();
 }
+function noteBullets(n){ return n.bullets && n.bullets.length ? n.bullets : [n.text]; }
 function renderJr(){
+  // 依既有 hashtag 動態產生篩選籤
+  const allTags = [...new Set(notes.flatMap(n=>n.tags))];
+  if(jrFilter!=='全部' && !allTags.includes(jrFilter)) jrFilter='全部';
+  renderChips('jr-chips', ['全部',...allTags], c => { jrFilter=c; renderJr(); }, ()=>jrFilter);
   const q = $('jr-search').value.trim().toLowerCase();
   const list = notes.filter(n =>
     (jrFilter==='全部' || n.tags.includes(jrFilter)) &&
@@ -459,9 +498,8 @@ function renderJr(){
   ).sort((a,b)=> b.date.localeCompare(a.date) || b.id-a.id);
   const box = $('jr-list');
   if(!list.length){
-    box.innerHTML = `<div class="empty"><b>日記還是空的</b>每次練完球花一分鐘，<br>記下今天的發現和下次要調整的地方。</div>`;
+    box.innerHTML = `<div class="empty"><b>日記還是空的</b>練完球用語音唸一段心得，<br>會自動整理成列點和 #標籤。</div>`;
   } else {
-    // 依日期分組成時間線
     const days = {};
     list.forEach(n => (days[n.date] = days[n.date]||[]).push(n));
     box.innerHTML = Object.keys(days).sort().reverse().map(d=>{
@@ -469,8 +507,8 @@ function renderJr(){
       return `<div class="tl-day">
         <div class="tl-date">${d}（${w}）</div>
         ${days[d].map(n=>`<div class="card">
-          ${n.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
-          <p class="note-text">${esc(n.text)}</p>
+          <ul class="blt">${noteBullets(n).map(b=>`<li>${esc(b)}</li>`).join('')}</ul>
+          <div style="margin:8px 0 2px">${n.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
           <button class="btn small danger" onclick="delNote(${n.id})">刪除</button>
         </div>`).join('')}
       </div>`;
@@ -501,6 +539,7 @@ async function saveSettings(){
     $('set-status').textContent = '狀態：登入未完成（' + (e.message||'請再試一次') + '）';
   }
 }
+let _tokenReject = null;
 function ensureToken(interactive=false){
   return new Promise((resolve, reject)=>{
     if(gToken) return resolve(gToken);
@@ -509,24 +548,34 @@ function ensureToken(interactive=false){
     tokenClient = tokenClient || google.accounts.oauth2.initTokenClient({
       client_id: gcfg.clientId,
       scope: 'https://www.googleapis.com/auth/drive.file',
-      callback: ()=>{}
+      callback: ()=>{},
+      error_callback: (e)=>{
+        const msg = e && e.type==='popup_closed' ? '登入視窗被關閉了'
+                  : e && e.type==='popup_failed_to_open' ? '登入視窗被瀏覽器擋住了，請改用 Safari 開啟本頁再試'
+                  : '授權沒有完成';
+        if(_tokenReject){ _tokenReject(new Error(msg)); _tokenReject = null; }
+      }
     });
+    _tokenReject = reject;
     tokenClient.callback = (resp)=>{
+      _tokenReject = null;
       if(resp.error) return reject(new Error(resp.error));
       gToken = resp.access_token;
-      setTimeout(()=>{ gToken = null; }, 55*60*1000); // token 約 1 小時後失效
+      setTimeout(()=>{ gToken = null; updateMineNotice(); }, 55*60*1000); // token 約 1 小時後失效
       updateMineNotice();
       resolve(gToken);
     };
-    tokenClient.requestAccessToken({ prompt: interactive ? 'consent' : '' });
+    tokenClient.requestAccessToken({ prompt: '' });
   });
 }
 function updateMineNotice(){
   $('mine-notice').innerHTML = gToken
     ? '⛳ 已連結 Google 雲端 ✓ 影片會上傳到你雲端硬碟的「果嶺筆記」資料夾，永久保存。'
     : (gcfg.clientId
-      ? '⛳ 已設定 Google 雲端，按上傳時會請你登入授權。'
+      ? '⛳ 已設定 Google 雲端。第一次按上傳會先跳 Google 登入，登入後再按一次即可選影片。'
       : '⛳ 尚未連結 Google 雲端。點右上角 ⚙︎ 完成設定後，就能在這裡直接上傳影片到你自己的雲端硬碟，永久保存並以慢動作播放。');
+  const b = $('btn-cloud');
+  if(b && !b.disabled) b.textContent = gToken ? '＋ 選擇影片上傳到 Google 雲端' : '＋ 上傳影片到我的 Google 雲端';
 }
 async function ensureFolder(){
   if(gcfg.folderId) return gcfg.folderId;
@@ -546,18 +595,30 @@ async function ensureFolder(){
 }
 function cloudUploadClick(){
   if(!gcfg.clientId){ openSettings(); return; }
+  const b = $('btn-cloud');
+  if(!gToken){
+    // 第一步：這一下點擊直接觸發 Google 登入（緊貼手勢，Safari 才不會擋彈出視窗）
+    b.textContent = '登入授權中…（請在跳出的視窗完成）';
+    ensureToken(true).then(()=>{
+      b.textContent = '✓ 已登入，再按一次選擇影片';
+    }).catch(err=>{
+      alert('登入沒有完成：' + err.message);
+      b.textContent = '＋ 上傳影片到我的 Google 雲端';
+    });
+    return;
+  }
+  // 第二步：已有授權，直接開檔案選擇
   $('mine-file-cloud').click();
 }
 async function cloudUpload(e){
   const f = e.target.files[0];
   e.target.value = '';
   if(!f) return;
-  const btn = document.querySelector('#page-mine .btn');
+  const btn = $('btn-cloud');
   try{
-    btn.textContent = '登入授權中…'; btn.disabled = true;
-    await ensureToken(true);
+    await ensureToken();
     const folder = await ensureFolder();
-    btn.textContent = '上傳中…（影片較大會需要一點時間）';
+    btn.textContent = '上傳中…（影片較大會需要一點時間）'; btn.disabled = true;
     // 可續傳上傳：先建立工作階段，再送檔案內容
     const meta = { name: `${new Date().toISOString().slice(0,10)}_${f.name}`, parents:[folder] };
     const init = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
@@ -747,8 +808,8 @@ function showSession(d){
   const dayVids  = mine.filter(m=>m.date===d);
   $('ss-body').innerHTML =
     dayNotes.map(n=>`<div class="card" style="margin-bottom:10px">
-      ${n.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
-      <p class="note-text">${esc(n.text)}</p>
+      <ul class="blt">${noteBullets(n).map(b=>`<li>${esc(b)}</li>`).join('')}</ul>
+      <div style="margin-top:8px">${n.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
     </div>`).join('') +
     (dayVids.length ? `<label class="f">當天的揮桿影片</label>` + dayVids.map(m=>`<div class="card" style="margin-bottom:10px">
         <div class="meta" style="margin-bottom:6px">${esc(m.name)}</div>
