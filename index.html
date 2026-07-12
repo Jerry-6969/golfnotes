@@ -20,20 +20,21 @@
   --nav-h:64px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{-webkit-text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;height:100%}
 body{
   font-family:'Noto Sans TC',-apple-system,sans-serif;
   background:var(--sand);
   color:var(--ink);
-  min-height:100vh;
-  padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 16px);
+  height:100dvh;
+  display:flex;flex-direction:column;
+  overflow:hidden;
 }
 /* ---------- 頂部記分卡風格標頭 ---------- */
 header{
   background:var(--fairway);
   color:#F5F2E8;
   padding:calc(14px + env(safe-area-inset-top)) 18px 14px;
-  position:sticky;top:0;z-index:20;
+  flex:none;
 }
 .brand{display:flex;align-items:baseline;gap:10px}
 .brand h1{font-family:'Noto Serif TC',serif;font-weight:900;font-size:1.35rem;letter-spacing:.04em}
@@ -41,7 +42,11 @@ header{
 .scoreline{display:flex;gap:14px;margin-top:8px;font-size:.72rem;color:#B9C9B4}
 .scoreline b{color:#F5F2E8;font-size:.95rem;font-family:'Noto Serif TC',serif;margin-right:3px}
 /* ---------- 分頁容器 ---------- */
-main{padding:16px 16px 8px;max-width:640px;margin:0 auto}
+main{
+  flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  width:100%;max-width:640px;margin:0 auto;
+  padding:16px 16px 28px;
+}
 .page{display:none;animation:fade .25s ease}
 .page.active{display:block}
 @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -145,7 +150,7 @@ video{width:100%;border-radius:10px;background:#000;display:block}
 .stat span{font-size:.72rem;color:var(--ink-soft)}
 /* ---------- 底部導航 ---------- */
 nav{
-  position:fixed;left:0;right:0;bottom:0;z-index:30;
+  flex:none;z-index:30;
   background:var(--card);border-top:1px solid var(--line);
   display:flex;height:calc(var(--nav-h) + env(safe-area-inset-bottom));
   padding-bottom:env(safe-area-inset-bottom);
@@ -158,6 +163,19 @@ nav button{
 nav button .ic{font-size:1.25rem;line-height:1}
 nav button.on{color:var(--fairway);font-weight:700}
 nav button.on .ic{transform:translateY(-1px)}
+/* ---------- 雲端影片挑選網格 ---------- */
+.pk-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.pk-item{border:2px solid var(--line);border-radius:10px;overflow:hidden;cursor:pointer;background:#fff}
+.pk-item.on{border-color:var(--green);box-shadow:0 0 0 2px rgba(47,125,79,.3)}
+.pk-thumb{
+  width:100%;aspect-ratio:16/10;background:var(--fairway);background-size:cover;background-position:center;
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.4rem;position:relative;
+}
+.pk-item.on .pk-thumb::after{
+  content:"✓";position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;
+  background:var(--green);color:#fff;font-size:.8rem;display:flex;align-items:center;justify-content:center;
+}
+.pk-meta{padding:6px 8px;font-size:.68rem;color:var(--ink-soft);line-height:1.5;word-break:break-all}
 /* 彈窗 */
 dialog{
   border:none;border-radius:16px;padding:0;width:min(92vw,480px);
@@ -214,17 +232,12 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
   <div class="notice" id="mine-notice">
     ⛳ 尚未連結 Google 雲端。點右上角 ⚙︎ 完成設定後，就能在這裡直接上傳影片到你自己的雲端硬碟，永久保存並以慢動作播放。
   </div>
-  <button class="btn" id="btn-cloud" style="width:100%;margin-bottom:8px" onclick="cloudUploadClick()">＋ 上傳影片到我的 Google 雲端</button>
-  <div id="up-wrap" style="display:none;background:var(--line);border-radius:6px;height:8px;margin-bottom:8px;overflow:hidden">
+  <button class="btn" style="width:100%;margin-bottom:8px" onclick="pickFromDrive()">☁️ 從我的 Google 雲端挑選影片</button>
+  <button class="btn ghost" id="btn-cloud" style="width:100%;margin-bottom:8px" onclick="cloudUploadClick()">＋ 直接上傳影片到雲端</button>
+  <div id="up-wrap" style="display:none;background:var(--line);border-radius:6px;height:8px;margin-bottom:14px;overflow:hidden">
     <div id="up-bar" style="height:100%;width:0%;background:var(--green);transition:width .3s"></div>
   </div>
   <input type="file" id="mine-file-cloud" accept="video/*" hidden>
-  <button class="btn ghost" style="width:100%;margin-bottom:8px" onclick="pickFromDrive()">☁️ 從我的 Google 雲端挑選影片（免重傳）</button>
-  <div class="row" style="margin-bottom:14px">
-    <button class="btn ghost small" onclick="openMineDialog()">貼影片連結</button>
-    <button class="btn ghost small" onclick="document.getElementById('mine-file').click()">本機暫存（當場回看）</button>
-  </div>
-  <input type="file" id="mine-file" accept="video/*" hidden>
   <div id="mine-list"></div>
 </section>
 
@@ -291,12 +304,10 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
   <div class="dlg-body">
     <p class="meta" style="line-height:1.7;margin-bottom:6px">
       貼上你在 Google Cloud Console 申請的 OAuth 用戶端 ID（一次性設定，免費）。
-      App 只會存取「它自己上傳」的檔案，不會碰你雲端裡的其他東西。
+      App 可上傳影片到你的雲端，並以唯讀方式列出影片供挑選，不會修改或刪除你雲端裡的檔案。
     </p>
     <label class="f">OAuth 用戶端 ID</label>
     <input type="text" id="set-cid" placeholder="xxxxxxxx.apps.googleusercontent.com">
-    <label class="f">API 金鑰（選填，啟用「從雲端挑選影片」）</label>
-    <input type="text" id="set-key" placeholder="AIza… 開頭的一串">
     <div id="set-status" class="meta" style="margin-top:10px">狀態：未連結</div>
   </div>
   <div class="dlg-foot">
@@ -306,21 +317,17 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
 </dialog>
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://apis.google.com/js/api.js" async defer></script>
-<!-- 貼上揮桿影片連結彈窗 -->
-<dialog id="dlg-mine">
-  <div class="dlg-head">加入揮桿影片</div>
-  <div class="dlg-body">
-    <label class="f">影片連結（YouTube 非公開 / Google Drive）</label>
-    <input type="url" id="m-url" placeholder="https://youtu.be/…" inputmode="url">
-    <label class="f">拍攝日期</label>
-    <input type="date" id="m-date">
-    <label class="f">備註（選填）</label>
-    <input type="text" id="m-note" placeholder="例：7 號鐵，練習場第 3 籃">
+
+<!-- 雲端影片挑選彈窗 -->
+<dialog id="dlg-pick">
+  <div class="dlg-head">從我的雲端挑選影片</div>
+  <div class="dlg-body" style="max-height:62vh;overflow-y:auto">
+    <input type="text" id="pk-search" placeholder="搜尋檔名…" oninput="renderPick()">
+    <div id="pk-grid" class="pk-grid"></div>
   </div>
   <div class="dlg-foot">
-    <button class="btn ghost" onclick="document.getElementById('dlg-mine').close()">取消</button>
-    <button class="btn" onclick="saveMineLink()">儲存</button>
+    <button class="btn ghost" onclick="document.getElementById('dlg-pick').close()">取消</button>
+    <button class="btn" id="pk-add" onclick="addPicked()">加入選取（0）</button>
   </div>
 </dialog>
 
@@ -376,7 +383,6 @@ const esc = s => (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'
   $('v-cat').innerHTML = CATS.map(c=>`<option>${c}</option>`).join('');
   $('lib-search').addEventListener('input', renderLib);
   $('jr-search').addEventListener('input', renderJr);
-  $('mine-file').addEventListener('change', addMine);
   document.querySelectorAll('nav button').forEach(b=>{
     b.addEventListener('click', ()=>{
       document.querySelectorAll('nav button').forEach(x=>x.classList.remove('on'));
@@ -562,13 +568,11 @@ let gToken = null, tokenClient = null;
 
 function openSettings(){
   $('set-cid').value = gcfg.clientId || '';
-  $('set-key').value = gcfg.apiKey || '';
   $('set-status').textContent = '狀態：' + (gToken ? '已連結 ✓' : (gcfg.clientId ? '已設定 ID，尚未登入' : '未連結'));
   $('dlg-set').showModal();
 }
 async function saveSettings(){
   gcfg.clientId = $('set-cid').value.trim();
-  gcfg.apiKey = $('set-key').value.trim();
   await store.set('gcfg', gcfg);
   if(!gcfg.clientId){ alert('請先貼上用戶端 ID'); return; }
   try{
@@ -587,7 +591,7 @@ function ensureToken(interactive=false){
     if(!window.google || !google.accounts){ return reject(new Error('Google 登入元件載入中，請稍候再試')); }
     tokenClient = tokenClient || google.accounts.oauth2.initTokenClient({
       client_id: gcfg.clientId,
-      scope: 'https://www.googleapis.com/auth/drive.file',
+      scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',
       callback: ()=>{},
       error_callback: (e)=>{
         const msg = e && e.type==='popup_closed' ? '登入視窗被關閉了'
@@ -612,12 +616,12 @@ function ensureToken(interactive=false){
 }
 function updateMineNotice(){
   $('mine-notice').innerHTML = gToken
-    ? '⛳ 已連結 Google 雲端 ✓ 影片會上傳到你雲端硬碟的「果嶺筆記」資料夾，永久保存。'
+    ? '⛳ 已連結 Google 雲端 ✓ 建議用 Drive App 上傳影片，再從這裡挑選，最快最穩。'
     : (gcfg.clientId
-      ? '⛳ 已設定 Google 雲端。第一次按上傳會先跳 Google 登入，登入後再按一次即可選影片。'
-      : '⛳ 尚未連結 Google 雲端。點右上角 ⚙︎ 完成設定後，就能在這裡直接上傳影片到你自己的雲端硬碟，永久保存並以慢動作播放。');
+      ? '⛳ 已設定 Google 雲端。按挑選或上傳時會先請你登入一次。'
+      : '⛳ 尚未連結 Google 雲端。點右上角 ⚙︎ 完成設定，就能挑選和播放你雲端裡的揮桿影片。');
   const b = $('btn-cloud');
-  if(b && !b.disabled) b.textContent = gToken ? '＋ 選擇影片上傳到 Google 雲端' : '＋ 上傳影片到我的 Google 雲端';
+  if(b && !b.disabled) b.textContent = gToken ? '＋ 選擇影片直接上傳' : '＋ 直接上傳影片到雲端';
 }
 async function ensureFolder(){
   if(gcfg.folderId) return gcfg.folderId;
@@ -652,44 +656,64 @@ function cloudUploadClick(){
   // 第二步：已有授權，直接開檔案選擇
   $('mine-file-cloud').click();
 }
-/* ═══════════ 從雲端挑選既有影片（Google Picker，免重傳） ═══════════ */
-let pickerReady = false;
-function loadPicker(){
-  return new Promise((res, rej)=>{
-    if(pickerReady) return res();
-    if(!window.gapi) return rej(new Error('Google 元件載入中，請稍候再試'));
-    gapi.load('picker', { callback: ()=>{ pickerReady = true; res(); }, onerror: ()=>rej(new Error('Picker 載入失敗')) });
-  });
-}
+/* ═══════════ 從雲端挑選既有影片（App 自製介面，免重傳） ═══════════ */
+let pkFiles = [], pkSel = new Set();
 async function pickFromDrive(){
   if(!gcfg.clientId){ openSettings(); return; }
-  if(!gcfg.apiKey){
-    alert('「從雲端挑選」需要多填一個 API 金鑰（免費、一次性）。申請方式：Google Cloud Console → API 和服務 → 憑證 → 建立憑證 → API 金鑰，並在「已啟用的 API」加入 Google Picker API。拿到後貼進 ⚙︎ 設定。');
-    openSettings(); return;
-  }
   try{
     await ensureToken(true);
-    await loadPicker();
-    const view = new google.picker.DocsView(google.picker.ViewId.DOCS_VIDEOS)
-      .setIncludeFolders(true);
-    new google.picker.PickerBuilder()
-      .setOAuthToken(gToken)
-      .setDeveloperKey(gcfg.apiKey)
-      .addView(view)
-      .setTitle('挑選你的揮桿影片')
-      .setCallback(async (data)=>{
-        if(data.action === google.picker.Action.PICKED){
-          data.docs.forEach((d, i)=>{
-            mine.unshift({ id: Date.now()+i, driveId: d.id, name: d.name, date: new Date().toISOString().slice(0,10), note:'' });
-          });
-          await store.set('mine', mine);
-          renderMine(); renderStats();
-        }
-      })
-      .build().setVisible(true);
+    pkSel.clear();
+    $('pk-search').value = '';
+    $('dlg-pick').showModal();
+    $('pk-grid').innerHTML = '<div class="meta" style="grid-column:1/-1;padding:24px;text-align:center">讀取你的影片清單…</div>';
+    const params = new URLSearchParams({
+      q: "mimeType contains 'video/' and trashed=false",
+      orderBy: 'modifiedTime desc',
+      pageSize: '50',
+      fields: 'files(id,name,modifiedTime,thumbnailLink,videoMediaMetadata(durationMillis))'
+    });
+    let r = await fetch('https://www.googleapis.com/drive/v3/files?'+params, { headers:{ Authorization:'Bearer '+gToken } });
+    if(r.status === 401 || r.status === 403){
+      gToken = null; await store.set('gtok', null);
+      await ensureToken(true);
+      r = await fetch('https://www.googleapis.com/drive/v3/files?'+params, { headers:{ Authorization:'Bearer '+gToken } });
+    }
+    if(!r.ok) throw new Error('清單讀取失敗（'+r.status+'）。若剛更新過權限，請重新登入一次');
+    pkFiles = (await r.json()).files || [];
+    renderPick();
   }catch(err){
-    alert('挑選沒有成功：' + err.message);
+    $('dlg-pick').close();
+    alert('讀取雲端影片沒有成功：' + err.message);
   }
+}
+function renderPick(){
+  const q = $('pk-search').value.trim().toLowerCase();
+  const list = pkFiles.filter(f => !q || f.name.toLowerCase().includes(q));
+  $('pk-grid').innerHTML = list.length ? list.map(f=>{
+    const sec = f.videoMediaMetadata && f.videoMediaMetadata.durationMillis ? Math.round(f.videoMediaMetadata.durationMillis/1000)+' 秒' : '';
+    const d = (f.modifiedTime||'').slice(0,10);
+    const thumb = f.thumbnailLink ? `style="background-image:url('${f.thumbnailLink.replace(/'/g,'')}')"` : '';
+    return `<div class="pk-item ${pkSel.has(f.id)?'on':''}" onclick="togglePick('${f.id}')">
+      <div class="pk-thumb" ${thumb}>${f.thumbnailLink?'':'🎬'}</div>
+      <div class="pk-meta">${esc(f.name)}<br>${d}${sec?'｜'+sec:''}</div>
+    </div>`;
+  }).join('') : '<div class="meta" style="grid-column:1/-1;padding:24px;text-align:center">找不到影片</div>';
+  $('pk-add').textContent = `加入選取（${pkSel.size}）`;
+}
+function togglePick(id){
+  pkSel.has(id) ? pkSel.delete(id) : pkSel.add(id);
+  renderPick();
+}
+async function addPicked(){
+  if(!pkSel.size){ alert('先點選至少一支影片'); return; }
+  let i = 0;
+  pkSel.forEach(fid=>{
+    const f = pkFiles.find(x=>x.id===fid);
+    mine.unshift({ id: Date.now()+(i++), driveId: fid, name: f.name, date: (f.modifiedTime||'').slice(0,10) || new Date().toISOString().slice(0,10), note:'' });
+  });
+  await store.set('mine', mine);
+  $('dlg-pick').close();
+  renderMine(); renderStats();
 }
 
 let uploading = false;
@@ -761,10 +785,18 @@ async function loadDrive(id, btn){
   try{
     if(btn){ btn.textContent = '載入中…'; btn.disabled = true; }
     await ensureToken(true);
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${m.driveId}?alt=media`, {
+    let r = await fetch(`https://www.googleapis.com/drive/v3/files/${m.driveId}?alt=media`, {
       headers:{ Authorization:'Bearer '+gToken }
     });
-    if(!r.ok) throw new Error('讀取失敗，可能需要重新登入');
+    if(r.status === 401 || r.status === 403){
+      // 授權過期或未生效：清掉舊通行證，重新登入再試一次
+      gToken = null; await store.set('gtok', null);
+      await ensureToken(true);
+      r = await fetch(`https://www.googleapis.com/drive/v3/files/${m.driveId}?alt=media`, {
+        headers:{ Authorization:'Bearer '+gToken }
+      });
+    }
+    if(!r.ok) throw new Error(`讀取失敗（${r.status}）${r.status===404?'——如果這支是用 Drive App 上傳的，請透過「☁️ 從雲端挑選」重新挑一次它，授權才會生效':''}`);
     blobs[id] = URL.createObjectURL(await r.blob());
     renderMine();
   }catch(err){
@@ -773,35 +805,11 @@ async function loadDrive(id, btn){
   }
 }
 
-/* ═══════════ 我的揮桿影片：雲端 / 連結 / 本機 ═══════════ */
+/* ═══════════ 我的揮桿影片 ═══════════ */
 const blobs = {}; // id -> objectURL（僅本次開啟有效）
 function driveId(url){
   const m = (url||'').match(/drive\.google\.com\/file\/d\/([\w-]+)/);
   return m ? m[1] : null;
-}
-function openMineDialog(){
-  $('m-url').value = $('m-note').value = '';
-  $('m-date').value = new Date().toISOString().slice(0,10);
-  $('dlg-mine').showModal();
-}
-async function saveMineLink(){
-  const url = $('m-url').value.trim();
-  if(!url){ alert('先貼上影片連結喔'); return; }
-  if(!ytId(url) && !driveId(url)){ alert('目前支援 YouTube 或 Google Drive 的影片連結'); return; }
-  mine.unshift({ id:Date.now(), url, name: ytId(url)?'YouTube 影片':'Drive 影片', date:$('m-date').value, note:$('m-note').value.trim() });
-  await store.set('mine', mine);
-  $('dlg-mine').close();
-  renderMine(); renderStats();
-}
-async function addMine(e){
-  const f = e.target.files[0];
-  if(!f) return;
-  const id = Date.now();
-  blobs[id] = URL.createObjectURL(f);
-  mine.unshift({ id, name:f.name, date:new Date().toISOString().slice(0,10), note:'' });
-  await store.set('mine', mine);
-  e.target.value = '';
-  renderMine(); renderStats();
 }
 /* 依影片類型產生播放器 HTML */
 function mediaHTML(m, compact=false){
