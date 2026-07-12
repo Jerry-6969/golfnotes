@@ -215,6 +215,9 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
     ⛳ 尚未連結 Google 雲端。點右上角 ⚙︎ 完成設定後，就能在這裡直接上傳影片到你自己的雲端硬碟，永久保存並以慢動作播放。
   </div>
   <button class="btn" id="btn-cloud" style="width:100%;margin-bottom:8px" onclick="cloudUploadClick()">＋ 上傳影片到我的 Google 雲端</button>
+  <div id="up-wrap" style="display:none;background:var(--line);border-radius:6px;height:8px;margin-bottom:8px;overflow:hidden">
+    <div id="up-bar" style="height:100%;width:0%;background:var(--green);transition:width .3s"></div>
+  </div>
   <input type="file" id="mine-file-cloud" accept="video/*" hidden>
   <div class="row" style="margin-bottom:14px">
     <button class="btn ghost small" onclick="openMineDialog()">貼影片連結</button>
@@ -268,7 +271,7 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
 
 <!-- 新增日記彈窗 -->
 <dialog id="dlg-note">
-  <div class="dlg-head">練球心得</div>
+  <div class="dlg-head" id="n-head">練球心得</div>
   <div class="dlg-body">
     <label class="f">日期</label>
     <input type="date" id="n-date">
@@ -354,6 +357,14 @@ const esc = s => (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'
   notes = await store.get('notes') || [];
   mine  = await store.get('mine')  || [];
   gcfg  = await store.get('gcfg')  || { clientId:'', folderId:'' };
+  const gt = await store.get('gtok');
+  if(gt && gt.exp > Date.now()){
+    gToken = gt.t;
+    setTimeout(()=>{ gToken = null; updateMineNotice(); }, gt.exp - Date.now());
+  }
+  window.addEventListener('beforeunload', (e)=>{
+    if(uploading){ e.preventDefault(); e.returnValue = '影片還在上傳中，離開會中斷上傳'; }
+  });
   $('mine-file-cloud').addEventListener('change', cloudUpload);
   updateMineNotice();
   // 分類籤
@@ -458,10 +469,17 @@ function autoTags(t){
   const r = TAG_RULES.filter(([,kws]) => kws.some(k => t.includes(k))).map(([tag]) => tag);
   return r.length ? r : ['#練球'];
 }
+function cleanTranscript(t){
+  return t
+    .replace(/[嗯呃欸哦喔]+[，,、]?/g,'')
+    .replace(/(那個|就是說|你知道嗎|對不對|基本上|反正)/g,'')
+    .replace(/(然後|再來|接著|另外就是|另外|還有就是|第[一二三四五六七八九十]+[點個]?就是|首先)/g,'§')
+    .replace(/§[，,、\s]*/g,'§');
+}
 function splitBullets(t){
-  const CONN = /^(但|不過|所以|因此|因為|讓|使|而且|然後|接著|並且|就|才|再|以及|還有|可是|結果)/;
+  const CONN = /^(但|不過|所以|因此|因為|讓|使|而且|並且|就|才|再|以及|還有|可是|結果)/;
   const out = [];
-  t.split(/[。．！!？?；;\n]+/).map(s=>s.trim()).filter(Boolean).forEach(seg=>{
+  cleanTranscript(t).split(/[。．！!？?；;\n§]+/).map(s=>s.trim().replace(/^(就是|就)/,'').trim()).filter(s=>s.length>1).forEach(seg=>{
     if(seg.length <= 26){ out.push(seg); return; }
     let cur = '';
     seg.split(/[，,]/).map(s=>s.trim()).filter(Boolean).forEach(p=>{
@@ -473,15 +491,31 @@ function splitBullets(t){
   });
   return out.length ? out : [t.trim()];
 }
+let editingNoteId = null;
 function openNoteDialog(){
+  editingNoteId = null;
+  $('n-head').textContent = '練球心得';
   $('n-date').value = new Date().toISOString().slice(0,10);
   $('n-text').value = '';
+  dlgNote.showModal();
+}
+function editNote(id){
+  const n = notes.find(x=>x.id===id); if(!n) return;
+  editingNoteId = id;
+  $('n-head').textContent = '編輯心得';
+  $('n-date').value = n.date;
+  $('n-text').value = n.text;
   dlgNote.showModal();
 }
 async function saveNote(){
   const text = $('n-text').value.trim();
   if(!text){ alert('寫一點今天的心得吧'); return; }
-  notes.unshift({ id:Date.now(), date: $('n-date').value, tags: autoTags(text), text, bullets: splitBullets(text) });
+  if(editingNoteId){
+    const n = notes.find(x=>x.id===editingNoteId);
+    if(n){ n.date = $('n-date').value; n.text = text; n.tags = autoTags(text); n.bullets = splitBullets(text); }
+  } else {
+    notes.unshift({ id:Date.now(), date: $('n-date').value, tags: autoTags(text), text, bullets: splitBullets(text) });
+  }
   await store.set('notes', notes);
   dlgNote.close(); renderJr(); renderStats();
 }
@@ -509,7 +543,7 @@ function renderJr(){
         ${days[d].map(n=>`<div class="card">
           <ul class="blt">${noteBullets(n).map(b=>`<li>${esc(b)}</li>`).join('')}</ul>
           <div style="margin:8px 0 2px">${n.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
-          <button class="btn small danger" onclick="delNote(${n.id})">刪除</button>
+          <div style="display:flex;gap:8px"><button class="btn small ghost" onclick="editNote(${n.id})">編輯</button><button class="btn small danger" onclick="delNote(${n.id})">刪除</button></div>
         </div>`).join('')}
       </div>`;
     }).join('');
@@ -561,7 +595,9 @@ function ensureToken(interactive=false){
       _tokenReject = null;
       if(resp.error) return reject(new Error(resp.error));
       gToken = resp.access_token;
-      setTimeout(()=>{ gToken = null; updateMineNotice(); }, 55*60*1000); // token 約 1 小時後失效
+      const exp = Date.now() + 55*60*1000;
+      store.set('gtok', { t:gToken, exp }); // 保存一小時內免重新登入
+      setTimeout(()=>{ gToken = null; updateMineNotice(); }, exp - Date.now());
       updateMineNotice();
       resolve(gToken);
     };
@@ -610,15 +646,31 @@ function cloudUploadClick(){
   // 第二步：已有授權，直接開檔案選擇
   $('mine-file-cloud').click();
 }
+let uploading = false;
+function putWithProgress(url, file, onProg){
+  return new Promise((res, rej)=>{
+    const x = new XMLHttpRequest();
+    x.open('PUT', url);
+    x.setRequestHeader('Content-Type', file.type || 'video/mp4');
+    x.upload.onprogress = ev => { if(ev.lengthComputable) onProg(ev.loaded, ev.total); };
+    x.onload = () => (x.status >= 200 && x.status < 300) ? res(JSON.parse(x.responseText)) : rej(new Error('上傳失敗（'+x.status+'），請重試'));
+    x.onerror = () => rej(new Error('網路中斷，請確認收訊後重試'));
+    x.send(file);
+  });
+}
 async function cloudUpload(e){
   const f = e.target.files[0];
   e.target.value = '';
   if(!f) return;
-  const btn = $('btn-cloud');
+  const mb = f.size/1048576;
+  if(mb > 300 && !confirm(`這支影片有 ${mb.toFixed(0)} MB，用行動網路上傳會很久。建議先在相簿把影片剪短到只留揮桿那幾秒，或連 Wi-Fi 再傳。仍要繼續嗎？`)) return;
+  const btn = $('btn-cloud'), wrap = $('up-wrap'), bar = $('up-bar');
   try{
     await ensureToken();
     const folder = await ensureFolder();
-    btn.textContent = '上傳中…（影片較大會需要一點時間）'; btn.disabled = true;
+    uploading = true; btn.disabled = true;
+    wrap.style.display = 'block'; bar.style.width = '0%';
+    btn.textContent = `上傳中 0%（共 ${mb.toFixed(0)} MB）`;
     // 可續傳上傳：先建立工作階段，再送檔案內容
     const meta = { name: `${new Date().toISOString().slice(0,10)}_${f.name}`, parents:[folder] };
     const init = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
@@ -628,18 +680,25 @@ async function cloudUpload(e){
     });
     if(!init.ok) throw new Error('建立上傳工作階段失敗');
     const session = init.headers.get('Location');
-    const up = await fetch(session, { method:'PUT', headers:{ 'Content-Type': f.type||'video/mp4' }, body: f });
-    if(!up.ok) throw new Error('上傳失敗，請檢查網路後重試');
-    const file = await up.json();
+    const file = await putWithProgress(session, f, (done, total)=>{
+      const pct = Math.round(done/total*100);
+      bar.style.width = pct + '%';
+      btn.textContent = `上傳中 ${pct}%（${(done/1048576).toFixed(0)}/${mb.toFixed(0)} MB）`;
+    });
     const id = Date.now();
     blobs[id] = URL.createObjectURL(f); // 剛上傳完直接可看，不用再下載
     mine.unshift({ id, driveId:file.id, name:f.name, date:new Date().toISOString().slice(0,10), note:'' });
     await store.set('mine', mine);
     renderMine(); renderStats();
+    bar.style.width = '100%';
+    btn.textContent = '✓ 上傳完成！';
+    setTimeout(()=>{ $('up-wrap').style.display='none'; updateMineNotice(); }, 1800);
   }catch(err){
     alert('雲端上傳沒有成功：' + err.message);
+    $('up-wrap').style.display = 'none';
+    updateMineNotice();
   }finally{
-    btn.textContent = '＋ 上傳影片到我的 Google 雲端'; btn.disabled = false;
+    uploading = false; btn.disabled = false;
   }
 }
 async function loadDrive(id, btn){
@@ -734,7 +793,10 @@ function renderMine(){
     box.innerHTML = `<div class="empty"><b>還沒有揮桿影片</b>錄下自己的揮桿，貼上連結，<br>用慢動作逐格檢視動作細節。</div>`;
   } else {
     box.innerHTML = mine.map(m=>`<div class="card">
-        <div class="meta" style="margin-bottom:8px">${m.date}｜${esc(m.name)}</div>
+        <div class="meta" style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
+          <input type="date" value="${m.date}" style="width:auto;padding:4px 8px;font-size:.75rem" onchange="dateMine(${m.id},this.value)">
+          <span>${esc(m.name)}</span>
+        </div>
         ${mediaHTML(m)}
         <label class="f">這次揮桿的備註</label>
         <input type="text" value="${esc(m.note)}" placeholder="例：頂點停頓有做出來，但送桿還是太早翻腕"
@@ -763,6 +825,7 @@ function relink(id, input){
   renderMine();
 }
 async function noteMine(id, val){ const m=mine.find(x=>x.id===id); if(m){ m.note=val; await store.set('mine',mine); } }
+async function dateMine(id, val){ const m=mine.find(x=>x.id===id); if(m){ m.date=val; await store.set('mine',mine); renderStats(); } }
 async function delMine(id){ if(!confirm('確定刪除這支影片記錄？')) return; mine=mine.filter(x=>x.id!==id); delete blobs[id]; await store.set('mine',mine); renderMine(); renderStats(); }
 
 /* ═══════════ 進度總覽 ═══════════ */
@@ -775,7 +838,7 @@ function renderStats(){
   $('st-vid').textContent   = mine.length;
   const recent = notes.slice(0,3);
   $('st-recent').innerHTML = recent.length
-    ? recent.map(n=>`<div>· ${n.date}｜${esc(n.text.slice(0,32))}${n.text.length>32?'…':''}</div>`).join('')
+    ? recent.map(n=>{ const b = noteBullets(n)[0]; return `<div>· ${n.date}｜${esc(b.slice(0,32))}${b.length>32?'…':''}</div>`; }).join('')
     : '尚無記錄';
 
   // 每次練球總整理：依日期分組成場次卡片
