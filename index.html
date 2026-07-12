@@ -289,12 +289,12 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
   <div class="dlg-body">
     <label class="f">日期</label>
     <input type="date" id="n-date">
-    <label class="f">今天的想法（口述或打字都行，我會自動整理成列點）</label>
-    <textarea id="n-text" placeholder="直接用語音輸入整段講完也沒問題，儲存時會自動分成列點並加上 #標籤"></textarea>
+    <label class="f">今天的想法（口述或打字都行）</label>
+    <textarea id="n-text" placeholder="內容會完整保留。若在 ⚙︎ 設定了 AI 金鑰，儲存時會自動整理成重點列表"></textarea>
   </div>
   <div class="dlg-foot">
     <button class="btn ghost" onclick="dlgNote.close()">取消</button>
-    <button class="btn" onclick="saveNote()">儲存</button>
+    <button class="btn" id="n-save" onclick="saveNote()">儲存</button>
   </div>
 </dialog>
 
@@ -308,6 +308,8 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
     </p>
     <label class="f">OAuth 用戶端 ID</label>
     <input type="text" id="set-cid" placeholder="xxxxxxxx.apps.googleusercontent.com">
+    <label class="f">AI 金鑰（選填，啟用 AI 整理筆記）</label>
+    <input type="text" id="set-ai" placeholder="Gemini（AIza…，aistudio.google.com 免費申請）或 Claude（sk-ant…）">
     <div id="set-status" class="meta" style="margin-top:10px">狀態：未連結</div>
   </div>
   <div class="dlg-foot">
@@ -479,27 +481,45 @@ function autoTags(t){
   const r = TAG_RULES.filter(([,kws]) => kws.some(k => t.includes(k))).map(([tag]) => tag);
   return r.length ? r : ['#練球'];
 }
-function cleanTranscript(t){
-  return t
-    .replace(/[嗯呃欸哦喔]+[，,、]?/g,'')
-    .replace(/(那個|就是說|你知道嗎|對不對|基本上|反正)/g,'')
-    .replace(/(然後|再來|接著|另外就是|另外|還有就是|第[一二三四五六七八九十]+[點個]?就是|首先)/g,'§')
-    .replace(/§[，,、\s]*/g,'§');
-}
-function splitBullets(t){
-  const CONN = /^(但|不過|所以|因此|因為|讓|使|而且|並且|就|才|再|以及|還有|可是|結果)/;
-  const out = [];
-  cleanTranscript(t).split(/[。．！!？?；;\n§]+/).map(s=>s.trim().replace(/^(就是|就)/,'').trim()).filter(s=>s.length>1).forEach(seg=>{
-    if(seg.length <= 26){ out.push(seg); return; }
-    let cur = '';
-    seg.split(/[，,]/).map(s=>s.trim()).filter(Boolean).forEach(p=>{
-      if(!cur){ cur = p; return; }
-      if(CONN.test(p) || p.length < 6 || (cur.length + p.length) < 18){ cur += '，' + p; }
-      else{ out.push(cur); cur = p; }
+/* AI 整理：把口述逐字稿真正消化成有意義的重點。依金鑰自動選擎：AIza…→Gemini，sk-ant…→Claude */
+const AI_PROMPT = '你是高爾夫練習筆記的整理助手。使用者提供口述逐字稿，請理解內容後整理成幾個完整、有意義的重點：合併屬於同一觀念的語句、去除口頭贅字、保留使用者的原意與用詞習慣，每一點是一個完整可讀的觀念，使用繁體中文。另外給 2-5 個主題標籤（#開頭，例如 #下桿 #轉髖）。只回傳 JSON，格式為 {"bullets":["重點一","重點二"],"tags":["#標籤"]}，不要包含任何其他文字或 markdown。';
+async function aiOrganize(text){
+  let raw;
+  if(gcfg.aiKey.startsWith('AIza')){
+    // Gemini
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+encodeURIComponent(gcfg.aiKey), {
+      method:'POST',
+      headers:{ 'content-type':'application/json' },
+      body: JSON.stringify({
+        contents:[{ parts:[{ text: AI_PROMPT + '\n\n以下是逐字稿：\n' + text }] }],
+        generationConfig:{ responseMimeType:'application/json' }
+      })
     });
-    if(cur) out.push(cur);
-  });
-  return out.length ? out : [t.trim()];
+    if(!r.ok) throw new Error('Gemini 回應失敗（'+r.status+(r.status===400||r.status===403?'，請檢查金鑰':'')+'）');
+    const d = await r.json();
+    raw = ((d.candidates||[])[0]?.content?.parts||[]).map(p=>p.text||'').join('');
+  } else {
+    // Claude
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{
+        'content-type':'application/json',
+        'x-api-key': gcfg.aiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body: JSON.stringify({
+        model:'claude-haiku-4-5-20251001',
+        max_tokens:1000,
+        system: AI_PROMPT,
+        messages:[{ role:'user', content:text }]
+      })
+    });
+    if(!r.ok) throw new Error('AI 回應失敗（'+r.status+(r.status===401?'，請檢查金鑰':'')+'）');
+    const d = await r.json();
+    raw = (d.content||[]).map(c=>c.text||'').join('');
+  }
+  return JSON.parse(raw.replace(/```json|```/g,'').trim());
 }
 let editingNoteId = null;
 function openNoteDialog(){
@@ -520,16 +540,38 @@ function editNote(id){
 async function saveNote(){
   const text = $('n-text').value.trim();
   if(!text){ alert('寫一點今天的心得吧'); return; }
+  let bullets = null, tags = autoTags(text), ai = false;
+  if(gcfg.aiKey){
+    const sb = $('n-save');
+    sb.disabled = true; sb.textContent = 'AI 整理中…';
+    try{
+      const r = await aiOrganize(text);
+      if(r.bullets && r.bullets.length){ bullets = r.bullets; ai = true; }
+      if(r.tags && r.tags.length){ tags = r.tags; }
+    }catch(e){
+      alert('AI 整理沒有成功（'+e.message+'）。先以原文保存，之後可按「編輯」重新儲存再試。');
+    }finally{
+      sb.disabled = false; sb.textContent = '儲存';
+    }
+  }
   if(editingNoteId){
     const n = notes.find(x=>x.id===editingNoteId);
-    if(n){ n.date = $('n-date').value; n.text = text; n.tags = autoTags(text); n.bullets = splitBullets(text); }
+    if(n){ n.date = $('n-date').value; n.text = text; n.tags = tags; n.bullets = bullets; n.ai = ai; }
   } else {
-    notes.unshift({ id:Date.now(), date: $('n-date').value, tags: autoTags(text), text, bullets: splitBullets(text) });
+    notes.unshift({ id:Date.now(), date: $('n-date').value, tags, text, bullets, ai });
   }
   await store.set('notes', notes);
   dlgNote.close(); renderJr(); renderStats();
 }
-function noteBullets(n){ return n.bullets && n.bullets.length ? n.bullets : [n.text]; }
+/* AI 整理過→列點；否則完整呈現原文 */
+function noteBody(n){
+  return (n.ai && n.bullets && n.bullets.length)
+    ? `<ul class="blt">${n.bullets.map(b=>`<li>${esc(b)}</li>`).join('')}</ul>`
+    : `<p class="note-text">${esc(n.text)}</p>`;
+}
+function noteFirstLine(n){
+  return (n.ai && n.bullets && n.bullets.length) ? n.bullets[0] : n.text.split('\n')[0];
+}
 function renderJr(){
   // 依既有 hashtag 動態產生篩選籤
   const allTags = [...new Set(notes.flatMap(n=>n.tags))];
@@ -551,7 +593,7 @@ function renderJr(){
       return `<div class="tl-day">
         <div class="tl-date">${d}（${w}）</div>
         ${days[d].map(n=>`<div class="card">
-          <ul class="blt">${noteBullets(n).map(b=>`<li>${esc(b)}</li>`).join('')}</ul>
+          ${noteBody(n)}
           <div style="margin:8px 0 2px">${n.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
           <div style="display:flex;gap:8px"><button class="btn small ghost" onclick="editNote(${n.id})">編輯</button><button class="btn small danger" onclick="delNote(${n.id})">刪除</button></div>
         </div>`).join('')}
@@ -568,11 +610,13 @@ let gToken = null, tokenClient = null;
 
 function openSettings(){
   $('set-cid').value = gcfg.clientId || '';
+  $('set-ai').value = gcfg.aiKey || '';
   $('set-status').textContent = '狀態：' + (gToken ? '已連結 ✓' : (gcfg.clientId ? '已設定 ID，尚未登入' : '未連結'));
   $('dlg-set').showModal();
 }
 async function saveSettings(){
   gcfg.clientId = $('set-cid').value.trim();
+  gcfg.aiKey = $('set-ai').value.trim();
   await store.set('gcfg', gcfg);
   if(!gcfg.clientId){ alert('請先貼上用戶端 ID'); return; }
   try{
@@ -901,7 +945,7 @@ function renderStats(){
   $('st-vid').textContent   = mine.length;
   const recent = notes.slice(0,3);
   $('st-recent').innerHTML = recent.length
-    ? recent.map(n=>{ const b = noteBullets(n)[0]; return `<div>· ${n.date}｜${esc(b.slice(0,32))}${b.length>32?'…':''}</div>`; }).join('')
+    ? recent.map(n=>{ const b = noteFirstLine(n); return `<div>· ${n.date}｜${esc(b.slice(0,32))}${b.length>32?'…':''}</div>`; }).join('')
     : '尚無記錄';
 
   // 每次練球總整理：依日期分組成場次卡片
@@ -934,7 +978,7 @@ function showSession(d){
   const dayVids  = mine.filter(m=>m.date===d);
   $('ss-body').innerHTML =
     dayNotes.map(n=>`<div class="card" style="margin-bottom:10px">
-      <ul class="blt">${noteBullets(n).map(b=>`<li>${esc(b)}</li>`).join('')}</ul>
+      ${noteBody(n)}
       <div style="margin-top:8px">${n.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
     </div>`).join('') +
     (dayVids.length ? `<label class="f">當天的揮桿影片</label>` + dayVids.map(m=>`<div class="card" style="margin-bottom:10px">
