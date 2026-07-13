@@ -198,6 +198,14 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
 .dlg-body{padding:16px 18px 18px}
 .dlg-foot{display:flex;gap:10px;padding:0 18px 18px}
 .dlg-foot .btn{flex:1}
+/* Toast 提示（popover 置頂層，彈窗開著時也看得到） */
+#toast{
+  position:fixed;inset:auto auto calc(var(--nav-h) + env(safe-area-inset-bottom) + 18px) 50%;
+  transform:translateX(-50%);margin:0;border:none;
+  background:rgba(27,38,31,.94);color:#F5F2E8;
+  padding:10px 18px;border-radius:999px;font-size:.82rem;line-height:1.6;
+  max-width:86vw;box-shadow:0 8px 24px rgba(0,0,0,.25);
+}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -355,6 +363,8 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
   </div>
 </dialog>
 
+<div id="toast" popover="manual"></div>
+
 <script>
 /* ═══════════ 儲存層：Claude 預覽用 window.storage，自架/本機自動改用 localStorage ═══════════ */
 const store = {
@@ -372,25 +382,42 @@ const store = {
 /* ═══════════ 狀態 ═══════════ */
 const CATS = ['揮桿技巧','基本動作','短桿','推桿','開球','體能與心態','賽前準備'];
 let vids = [], notes = [], mine = []; // mine 只存中繼資料，影片檔為工作階段暫存
+let tomb = { notes:{}, vids:{}, mine:{} }; // 刪除墓碑（id→刪除時間）：合併時防止已刪項目從另一台裝置復活
 let libFilter = '全部', jrFilter = '全部';
 const $ = id => document.getElementById(id);
 const dlgVid = $('dlg-vid'), dlgNote = $('dlg-note');
 const esc = s => (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let toastTimer = null;
+function toast(msg){
+  const el = $('toast');
+  if(!el || !el.showPopover){ alert(msg); return; } // 舊瀏覽器退回 alert
+  el.textContent = msg;
+  try{ el.hidePopover(); }catch(e){}
+  try{ el.showPopover(); }catch(e){}
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ try{ el.hidePopover(); }catch(e){} }, 3600);
+}
 
 /* ═══════════ 初始化 ═══════════ */
 (async function init(){
   vids  = await store.get('vids')  || [];
   notes = await store.get('notes') || [];
   mine  = await store.get('mine')  || [];
+  tomb  = await store.get('tomb')  || {};
+  ['notes','vids','mine'].forEach(k=>{ tomb[k] = tomb[k] || {}; });
   gcfg  = await store.get('gcfg')  || { clientId:'', folderId:'' };
   const gt = await store.get('gtok');
   if(gt && gt.exp > Date.now()){
     gToken = gt.t;
-    setTimeout(()=>{ gToken = null; updateMineNotice(); setSync('☁ 離線（登入後自動同步）'); }, gt.exp - Date.now());
+    setTimeout(()=>{ gToken = null; updateMineNotice(); softLogin(); }, gt.exp - Date.now());
     pullCloud().then(refreshThumbs);
   } else {
     setSync('☁ 離線（登入後自動同步）');
   }
+  // 回到 App／視窗取得焦點時自動拉雲端，加上定時輪詢：另一台裝置的更新幾秒內就會出現
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) syncNow(); });
+  window.addEventListener('focus', ()=>syncNow());
+  setInterval(()=>syncNow(), 60000);
   window.addEventListener('beforeunload', (e)=>{
     if(uploading){ e.preventDefault(); e.returnValue = '影片還在上傳中，離開會中斷上傳'; }
   });
@@ -408,6 +435,8 @@ const esc = s => (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'
       b.classList.add('on');
       $('page-'+b.dataset.page).classList.add('active');
       if(b.dataset.page==='stats') renderStats();
+      // 備註欄在隱藏分頁時算不出高度，切進來時重算一次
+      if(b.dataset.page==='mine') document.querySelectorAll('#mine-list .mnote').forEach(autoGrow);
     });
   });
   renderLib(); renderJr(); renderMine(); renderStats();
@@ -446,8 +475,8 @@ function srcLabel(url){
 function openVidDialog(){ $('v-url').value=$('v-title').value=$('v-note').value=''; dlgVid.showModal(); }
 async function saveVid(){
   const url = $('v-url').value.trim(), title = $('v-title').value.trim();
-  if(!url && !title){ alert('至少填一個連結或標題喔'); return; }
-  vids.unshift({ id:Date.now(), url, title: title || url, cat: $('v-cat').value, note: $('v-note').value.trim(), fav:false, ts:Date.now() });
+  if(!url && !title){ toast('至少填一個連結或標題喔'); return; }
+  vids.unshift({ id:Date.now(), url, title: title || url, cat: $('v-cat').value, note: $('v-note').value.trim(), fav:false, ts:Date.now(), mt:Date.now() });
   await saveData('vids');
   dlgVid.close(); renderLib(); renderStats();
 }
@@ -480,8 +509,8 @@ function renderLib(){
   }
   $('sc-vids').textContent = vids.length;
 }
-async function toggleFav(id){ const v=vids.find(x=>x.id===id); if(v){ v.fav=!v.fav; await saveData('vids'); renderLib(); renderStats(); } }
-async function delVid(id){ if(!confirm('確定刪除這支影片收藏？')) return; vids=vids.filter(x=>x.id!==id); await saveData('vids'); renderLib(); renderStats(); }
+async function toggleFav(id){ const v=vids.find(x=>x.id===id); if(v){ v.fav=!v.fav; v.mt=Date.now(); await saveData('vids'); renderLib(); renderStats(); } }
+async function delVid(id){ if(!confirm('確定刪除這支影片收藏？')) return; vids=vids.filter(x=>x.id!==id); markDeleted('vids', id); await saveData('vids'); renderLib(); renderStats(); }
 
 /* ═══════════ 練球日記：口述自動整理成列點 + 自動 hashtag ═══════════ */
 const TAG_RULES = [
@@ -562,7 +591,7 @@ function editNote(id){
 }
 async function saveNote(){
   const text = $('n-text').value.trim();
-  if(!text){ alert('寫一點今天的心得吧'); return; }
+  if(!text){ toast('寫一點今天的心得吧'); return; }
   let bullets = null, tags = autoTags(text), ai = false;
   if(gcfg.aiKey){
     const sb = $('n-save');
@@ -572,16 +601,16 @@ async function saveNote(){
       if(r.bullets && r.bullets.length){ bullets = r.bullets; ai = true; }
       if(r.tags && r.tags.length){ tags = r.tags; }
     }catch(e){
-      alert('AI 整理沒有成功（'+e.message+'）。先以原文保存，之後可按「編輯」重新儲存再試。');
+      toast('AI 整理沒有成功（'+e.message+'）。先以原文保存，之後可按「編輯」重新儲存再試。');
     }finally{
       sb.disabled = false; sb.textContent = '儲存';
     }
   }
   if(editingNoteId){
     const n = notes.find(x=>x.id===editingNoteId);
-    if(n){ n.date = $('n-date').value; n.text = text; n.tags = tags; n.bullets = bullets; n.ai = ai; }
+    if(n){ n.date = $('n-date').value; n.text = text; n.tags = tags; n.bullets = bullets; n.ai = ai; n.mt = Date.now(); }
   } else {
-    notes.unshift({ id:Date.now(), date: $('n-date').value, tags, text, bullets, ai });
+    notes.unshift({ id:Date.now(), date: $('n-date').value, tags, text, bullets, ai, mt:Date.now() });
   }
   await saveData('notes');
   dlgNote.close(); renderJr(); renderStats();
@@ -625,7 +654,7 @@ function renderJr(){
   }
   $('sc-notes').textContent = notes.length;
 }
-async function delNote(id){ if(!confirm('確定刪除這則記錄？')) return; notes=notes.filter(x=>x.id!==id); await saveData('notes'); renderJr(); renderStats(); }
+async function delNote(id){ if(!confirm('確定刪除這則記錄？')) return; notes=notes.filter(x=>x.id!==id); markDeleted('notes', id); await saveData('notes'); renderJr(); renderStats(); }
 
 /* ═══════════ Google Drive 串接：在 App 內直接上傳與播放 ═══════════ */
 let gcfg = { clientId:'', folderId:'' };
@@ -641,7 +670,7 @@ async function saveSettings(){
   gcfg.clientId = $('set-cid').value.trim();
   gcfg.aiKey = $('set-ai').value.trim();
   await store.set('gcfg', gcfg);
-  if(!gcfg.clientId){ alert('請先貼上用戶端 ID'); return; }
+  if(!gcfg.clientId){ toast('請先貼上用戶端 ID'); return; }
   try{
     await ensureToken(true);
     $('set-status').textContent = '狀態：已連結 ✓';
@@ -674,7 +703,7 @@ function ensureToken(interactive=false){
       gToken = resp.access_token;
       const exp = Date.now() + 55*60*1000;
       store.set('gtok', { t:gToken, exp }); // 保存一小時內免重新登入
-      setTimeout(()=>{ gToken = null; updateMineNotice(); }, exp - Date.now());
+      setTimeout(()=>{ gToken = null; updateMineNotice(); softLogin(); }, exp - Date.now());
       updateMineNotice();
       pullCloud().then(refreshThumbs);
       resolve(gToken);
@@ -691,16 +720,57 @@ function updateMineNotice(){
   const b = $('btn-cloud');
   if(b && !b.disabled) b.textContent = gToken ? '＋ 選擇影片直接上傳' : '＋ 直接上傳影片到雲端';
 }
-/* ═══════════ 雲端同步：筆記與清單自動存到 Drive 的 greennotes-data.json ═══════════ */
+/* ═══════════ 雲端同步：筆記與清單自動存到 Drive 的 greennotes-data.json ═══════════
+   合併策略：逐筆合併（每筆記錄帶 mt 修改時間，新的贏；刪除以墓碑記錄），
+   兩台裝置各自修改不同筆時互不覆蓋，根治舊版「整包誰新誰贏」造成的資料遺失 */
 let syncTimer = null;
 function setSync(t){ const el = $('sync-st'); if(el) el.textContent = t; }
+function markDeleted(kind, id){ tomb[kind][id] = Date.now(); }
 async function saveData(key){
   const map = { notes, vids, mine };
   await store.set(key, map[key]);
+  await store.set('tomb', tomb);
   await store.set('updatedAt', Date.now());
   setSync('☁ 待同步…');
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(()=>{ if(gToken) pushCloud().catch(()=>setSync('☁ 同步失敗，稍後重試')); else setSync('☁ 離線（登入後自動同步）'); }, 1500);
+  syncTimer = setTimeout(()=>{ if(gToken) pushCloud().catch(()=>setSync('☁ 同步失敗，稍後重試')); else softLogin(); }, 1500);
+}
+/* 靜默續期：授權過期時嘗試不打擾地重新取得（瀏覽器若擋彈窗就安靜維持離線，等使用者下次點雲端功能） */
+let lastSilent = 0;
+async function softLogin(){
+  if(gToken || !gcfg.clientId){ if(!gToken) setSync('☁ 離線（登入後自動同步）'); return; }
+  if(Date.now() - lastSilent < 10*60*1000){ setSync('☁ 離線（登入後自動同步）'); return; }
+  lastSilent = Date.now();
+  try{ await ensureToken(false); }catch(e){ setSync('☁ 離線（登入後自動同步）'); }
+}
+let lastPull = 0;
+function syncNow(){
+  if(document.hidden) return;
+  if(!gToken){ softLogin(); return; }
+  if(Date.now() - lastPull < 8000) return;
+  lastPull = Date.now();
+  pullCloud().then(refreshThumbs);
+}
+function mtOf(x){ return x.mt || x.ts || x.id || 0; }
+function mergeList(localArr, cloudArr, tombs){
+  const map = new Map();
+  (cloudArr||[]).forEach(x=>{ if(x && x.id!=null) map.set(x.id, x); });
+  (localArr||[]).forEach(x=>{
+    const c = map.get(x.id);
+    if(!c || mtOf(x) >= mtOf(c)) map.set(x.id, x);
+  });
+  Object.entries(tombs||{}).forEach(([id,t])=>{
+    const x = map.get(+id);
+    if(x && t >= mtOf(x)) map.delete(+id);
+  });
+  return [...map.values()].sort((a,b)=> (b.id||0)-(a.id||0));
+}
+function mergeTombs(a,b){
+  const r = {...(a||{})};
+  Object.entries(b||{}).forEach(([id,t])=>{ if(!r[id] || t > r[id]) r[id] = t; });
+  const cut = Date.now() - 90*86400000; // 墓碑保留 90 天，夠所有裝置都同步到
+  Object.keys(r).forEach(k=>{ if(r[k] < cut) delete r[k]; });
+  return r;
 }
 async function ensureDataFile(){
   if(gcfg.dataFileId) return gcfg.dataFileId;
@@ -723,7 +793,7 @@ async function pushCloud(){
   if(!gToken) return;
   setSync('☁ 同步中…');
   const id = await ensureDataFile();
-  const payload = { updatedAt: (await store.get('updatedAt')) || Date.now(), notes, vids, mine };
+  const payload = { updatedAt: (await store.get('updatedAt')) || Date.now(), notes, vids, mine, tomb };
   const r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
     method:'PATCH',
     headers:{ Authorization:'Bearer '+gToken, 'Content-Type':'application/json' },
@@ -732,30 +802,38 @@ async function pushCloud(){
   setSync(r.ok ? '☁ 已同步' : '☁ 同步失敗，稍後重試');
   if(!r.ok) throw new Error('push failed');
 }
+let pulling = false;
 async function pullCloud(){
-  if(!gToken) return;
+  if(!gToken || pulling) return;
+  pulling = true;
   try{
     setSync('☁ 同步中…');
     const id = await ensureDataFile();
     const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, { headers:{ Authorization:'Bearer '+gToken } });
     if(!r.ok){ setSync('☁ 已連線'); return; }
     const txt = await r.text();
-    if(!txt.trim()){ await pushCloud(); return; } // 雲端還是空檔：把本機推上去
-    const d = JSON.parse(txt);
-    const localT = (await store.get('updatedAt')) || 0;
-    if((d.updatedAt||0) > localT){
-      // 雲端較新：以雲端為準
-      notes = d.notes||[]; vids = d.vids||[]; mine = d.mine||[];
-      await store.set('notes', notes); await store.set('vids', vids); await store.set('mine', mine);
-      await store.set('updatedAt', d.updatedAt);
-      renderLib(); renderJr(); renderMine(); renderStats();
-      setSync('☁ 已同步');
-    } else if(localT > (d.updatedAt||0)){
-      await pushCloud(); // 本機較新：推上雲端
-    } else {
-      setSync('☁ 已同步');
-    }
+    const d = txt.trim() ? JSON.parse(txt) : {};
+    const ct = d.tomb || {};
+    tomb = {
+      notes: mergeTombs(tomb.notes, ct.notes),
+      vids:  mergeTombs(tomb.vids,  ct.vids),
+      mine:  mergeTombs(tomb.mine,  ct.mine)
+    };
+    const before = JSON.stringify([notes, vids, mine]);
+    notes = mergeList(notes, d.notes, tomb.notes);
+    vids  = mergeList(vids,  d.vids,  tomb.vids);
+    mine  = mergeList(mine,  d.mine,  tomb.mine);
+    await store.set('notes', notes); await store.set('vids', vids);
+    await store.set('mine', mine);  await store.set('tomb', tomb);
+    const after = JSON.stringify([notes, vids, mine]);
+    if(after !== before){ renderLib(); renderJr(); renderMine(); renderStats(); refreshThumbs(); }
+    // 合併結果和雲端不同（本機有對方沒有的變更）才回推，避免每次輪詢都寫檔
+    const cloudNorm = JSON.stringify([
+      mergeList([], d.notes, tomb.notes), mergeList([], d.vids, tomb.vids), mergeList([], d.mine, tomb.mine)
+    ]);
+    if(after !== cloudNorm){ await pushCloud(); } else { setSync('☁ 已同步'); }
   }catch(e){ setSync('☁ 同步失敗，稍後重試'); }
+  finally{ pulling = false; }
 }
 
 async function ensureFolder(){
@@ -783,7 +861,7 @@ function cloudUploadClick(){
     ensureToken(true).then(()=>{
       b.textContent = '✓ 已登入，再按一次選擇影片';
     }).catch(err=>{
-      alert('登入沒有完成：' + err.message);
+      toast('登入沒有完成：' + err.message);
       b.textContent = '＋ 上傳影片到我的 Google 雲端';
     });
     return;
@@ -818,7 +896,7 @@ async function pickFromDrive(){
     renderPick();
   }catch(err){
     $('dlg-pick').close();
-    alert('讀取雲端影片沒有成功：' + err.message);
+    toast('讀取雲端影片沒有成功：' + err.message);
   }
 }
 function renderPick(){
@@ -840,15 +918,16 @@ function togglePick(id){
   renderPick();
 }
 async function addPicked(){
-  if(!pkSel.size){ alert('先點選至少一支影片'); return; }
+  if(!pkSel.size){ toast('先點選至少一支影片'); return; }
   let i = 0;
   pkSel.forEach(fid=>{
     const f = pkFiles.find(x=>x.id===fid);
-    mine.unshift({ id: Date.now()+(i++), driveId: fid, name: f.name, thumb: f.thumbnailLink || '', date: (f.modifiedTime||'').slice(0,10) || new Date().toISOString().slice(0,10), note:'' });
+    mine.unshift({ id: Date.now()+(i++), driveId: fid, name: f.name, thumb: f.thumbnailLink || '', date: (f.modifiedTime||'').slice(0,10) || new Date().toISOString().slice(0,10), note:'', mt: Date.now() });
   });
   await saveData('mine');
   $('dlg-pick').close();
   renderMine(); renderStats();
+  refreshThumbs(); // 剛挑進來的縮圖是短效網址，立刻升級成永久小圖
 }
 
 let uploading = false;
@@ -900,14 +979,14 @@ async function cloudUpload(e){
     });
     const id = Date.now();
     blobs[id] = URL.createObjectURL(f); // 剛上傳完直接可看，不用再下載
-    mine.unshift({ id, driveId:file.id, name:f.name, date:new Date().toISOString().slice(0,10), note:'' });
+    mine.unshift({ id, driveId:file.id, name:f.name, date:new Date().toISOString().slice(0,10), note:'', mt:Date.now() });
     await saveData('mine');
     renderMine(); renderStats();
     bar.style.width = '100%';
     btn.textContent = '✓ 上傳完成！';
     setTimeout(()=>{ $('up-wrap').style.display='none'; updateMineNotice(); }, 1800);
   }catch(err){
-    alert('雲端上傳沒有成功：' + err.message);
+    toast('雲端上傳沒有成功：' + err.message);
     $('up-wrap').style.display = 'none';
     updateMineNotice();
   }finally{
@@ -962,33 +1041,16 @@ async function loadDrive(id, btn){
     blobs[id] = URL.createObjectURL(await r.blob());
     renderMine();
   }catch(err){
-    alert('影片載入沒有成功：' + err.message);
+    toast('影片載入沒有成功：' + err.message);
     if(btn){ btn.textContent = '▶ 載入播放'; btn.disabled = false; }
   }
 }
 
 /* ═══════════ 我的揮桿影片 ═══════════ */
 const blobs = {}; // id -> objectURL（僅本次開啟有效）
-const thumbs = {}; // 'm'+id / 'v'+id -> Drive 縮圖網址（短效連結，每次登入後重抓）
 function driveId(url){
   const m = (url||'').match(/drive\.google\.com\/file\/d\/([\w-]+)/);
   return m ? m[1] : null;
-}
-async function fetchDriveThumb(fileId){
-  try{
-    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink`, { headers:{ Authorization:'Bearer '+gToken } });
-    if(!r.ok) return null;
-    return (await r.json()).thumbnailLink || null;
-  }catch(e){ return null; }
-}
-async function refreshThumbs(){
-  if(!gToken) return;
-  const jobs = [];
-  mine.forEach(m=>{ if(m.driveId && !thumbs['m'+m.id]) jobs.push(async()=>{ const t = await fetchDriveThumb(m.driveId); if(t) thumbs['m'+m.id] = t; }); });
-  vids.forEach(v=>{ const d = driveId(v.url); if(d && !thumbs['v'+v.id]) jobs.push(async()=>{ const t = await fetchDriveThumb(d); if(t) thumbs['v'+v.id] = t; }); });
-  if(!jobs.length) return;
-  await Promise.all(jobs.slice(0,20).map(j=>j()));
-  renderMine(); renderLib();
 }
 /* 依影片類型產生播放器 HTML */
 function mediaHTML(m, compact=false){
@@ -1081,7 +1143,7 @@ function noteMineInput(id, el){
   clearTimeout(noteTimers[id]);
   noteTimers[id] = setTimeout(async ()=>{
     const m = mine.find(x=>x.id===id); if(!m) return;
-    m.note = el.value.trim();
+    m.note = el.value.trim(); m.mt = Date.now();
     await saveData('mine');
     if(st){
       st.textContent = '✓ 已儲存';
@@ -1089,8 +1151,8 @@ function noteMineInput(id, el){
     }
   }, 600);
 }
-async function dateMine(id, val){ const m=mine.find(x=>x.id===id); if(m){ m.date=val; await saveData('mine'); renderStats(); } }
-async function delMine(id){ if(!confirm('確定刪除這支影片記錄？')) return; mine=mine.filter(x=>x.id!==id); delete blobs[id]; await saveData('mine'); renderMine(); renderStats(); }
+async function dateMine(id, val){ const m=mine.find(x=>x.id===id); if(m){ m.date=val; m.mt=Date.now(); await saveData('mine'); renderStats(); } }
+async function delMine(id){ if(!confirm('確定刪除這支影片記錄？')) return; mine=mine.filter(x=>x.id!==id); markDeleted('mine', id); delete blobs[id]; await saveData('mine'); renderMine(); renderStats(); }
 
 /* ═══════════ 進度總覽 ═══════════ */
 function renderStats(){
@@ -1100,10 +1162,6 @@ function renderStats(){
   $('st-fav').textContent   = vids.filter(v=>v.fav).length;
   $('st-total').textContent = notes.length;
   $('st-vid').textContent   = mine.length;
-  const recent = notes.slice(0,3);
-  $('st-recent').innerHTML = recent.length
-    ? recent.map(n=>{ const b = noteFirstLine(n); return `<div>· ${n.date}｜${esc(b.slice(0,32))}${b.length>32?'…':''}</div>`; }).join('')
-    : '尚無記錄';
 
   // 每次練球總整理：依日期分組成場次卡片
   const days = {};
