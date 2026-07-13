@@ -319,14 +319,17 @@ dialog::backdrop{background:rgba(20,32,25,.4);backdrop-filter:blur(3px);-webkit-
 
 <!-- 新增教學影片彈窗 -->
 <dialog id="dlg-vid">
-  <div class="dlg-head">收藏教學影片</div>
+  <div class="dlg-head" id="v-head">收藏教學影片</div>
   <div class="dlg-body">
     <label class="f">影片連結（YouTube / Instagram / 其他）</label>
     <input type="url" id="v-url" placeholder="https://…" inputmode="url">
     <label class="f">標題</label>
     <input type="text" id="v-title" placeholder="例：下桿時髖部先轉的三個練習">
     <label class="f">分類</label>
-    <select id="v-cat"></select>
+    <div class="row" style="align-items:stretch">
+      <select id="v-cat" style="flex:1"></select>
+      <button class="btn small ghost" type="button" style="flex:none" onclick="addCat()">＋ 新增分類</button>
+    </div>
     <label class="f">備註（選填）</label>
     <input type="text" id="v-note" placeholder="例：練前必看，注意 2:15 的示範">
   </div>
@@ -413,6 +416,9 @@ const store = {
 
 /* ═══════════ 狀態 ═══════════ */
 const CATS = ['揮桿技巧','基本動作','短桿','推桿','開球','體能與心態','賽前準備'];
+const CLUBS = ['1號木','3號木','5號木','小雞腿','3號鐵','4號鐵','5號鐵','6號鐵','7號鐵','8號鐵','9號鐵','PW','AW','SW','LW','推桿'];
+let cats = []; // 使用者自訂分類（與預設 CATS 合併使用，會同步到雲端）
+const allCats = () => [...CATS, ...cats];
 let vids = [], notes = [], mine = []; // mine 只存中繼資料，影片檔為工作階段暫存
 let tomb = { notes:{}, vids:{}, mine:{} }; // 刪除墓碑（id→刪除時間）：合併時防止已刪項目從另一台裝置復活
 let libFilter = '全部', jrFilter = '全部';
@@ -435,6 +441,7 @@ function toast(msg){
   vids  = await store.get('vids')  || [];
   notes = await store.get('notes') || [];
   mine  = await store.get('mine')  || [];
+  cats  = await store.get('cats')  || [];
   tomb  = await store.get('tomb')  || {};
   ['notes','vids','mine'].forEach(k=>{ tomb[k] = tomb[k] || {}; });
   gcfg  = await store.get('gcfg')  || { clientId:'', folderId:'' };
@@ -464,8 +471,8 @@ function toast(msg){
     pg.insertBefore(tip, pg.querySelector('.search'));
   }
   // 分類籤
-  renderChips('lib-chips', ['全部',...CATS], c => { libFilter=c; renderLib(); }, ()=>libFilter);
-  $('v-cat').innerHTML = CATS.map(c=>`<option>${c}</option>`).join('');
+  renderLibChips();
+  fillCatSelect();
   $('lib-search').addEventListener('input', renderLib);
   $('jr-search').addEventListener('input', renderJr);
   document.querySelectorAll('nav button').forEach(b=>{
@@ -512,11 +519,49 @@ function srcLabel(url){
   if(url.includes('facebook.') || url.includes('fb.watch')) return 'FB';
   return '連結';
 }
-function openVidDialog(){ $('v-url').value=$('v-title').value=$('v-note').value=''; dlgVid.showModal(); }
+function renderLibChips(){
+  renderChips('lib-chips', ['全部',...allCats()], c => { libFilter=c; renderLib(); }, ()=>libFilter);
+}
+function fillCatSelect(sel){
+  $('v-cat').innerHTML = allCats().map(c=>`<option>${c}</option>`).join('');
+  if(sel && allCats().includes(sel)) $('v-cat').value = sel;
+}
+async function addCat(){
+  const name = (prompt('新分類的名稱：')||'').trim();
+  if(!name) return;
+  if(allCats().includes(name)){ $('v-cat').value = name; return; }
+  cats.push(name);
+  await saveData('cats');
+  fillCatSelect(name);
+  renderLibChips();
+}
+let editingVidId = null;
+function openVidDialog(){
+  editingVidId = null;
+  $('v-head').textContent = '收藏教學影片';
+  $('v-url').value=$('v-title').value=$('v-note').value='';
+  fillCatSelect();
+  dlgVid.showModal();
+}
+function editVid(id){
+  const v = vids.find(x=>x.id===id); if(!v) return;
+  editingVidId = id;
+  $('v-head').textContent = '編輯影片收藏';
+  $('v-url').value = v.url || '';
+  $('v-title').value = v.title || '';
+  $('v-note').value = v.note || '';
+  fillCatSelect(v.cat);
+  dlgVid.showModal();
+}
 async function saveVid(){
   const url = $('v-url').value.trim(), title = $('v-title').value.trim();
   if(!url && !title){ toast('至少填一個連結或標題喔'); return; }
-  vids.unshift({ id:Date.now(), url, title: title || url, cat: $('v-cat').value, note: $('v-note').value.trim(), fav:false, ts:Date.now(), mt:Date.now() });
+  if(editingVidId){
+    const v = vids.find(x=>x.id===editingVidId);
+    if(v){ v.url = url; v.title = title || url; v.cat = $('v-cat').value; v.note = $('v-note').value.trim(); v.mt = Date.now(); }
+  } else {
+    vids.unshift({ id:Date.now(), url, title: title || url, cat: $('v-cat').value, note: $('v-note').value.trim(), fav:false, ts:Date.now(), mt:Date.now() });
+  }
   await saveData('vids');
   dlgVid.close(); renderLib(); renderStats();
 }
@@ -540,6 +585,7 @@ function renderLib(){
           <span class="tag">${esc(v.cat)}</span>${v.note?`<span class="meta">${esc(v.note)}</span>`:''}
           <div class="vid-actions">
             ${v.url?`<a class="btn small" href="${esc(v.url)}" target="_blank" rel="noopener">▶ 觀看</a>`:''}
+            <button class="btn small ghost" onclick="editVid(${v.id})">編輯</button>
             <button class="btn small danger" onclick="delVid(${v.id})">刪除</button>
           </div>
         </div>
@@ -767,7 +813,7 @@ let syncTimer = null;
 function setSync(t){ const el = $('sync-st'); if(el) el.textContent = t; }
 function markDeleted(kind, id){ tomb[kind][id] = Date.now(); }
 async function saveData(key){
-  const map = { notes, vids, mine };
+  const map = { notes, vids, mine, cats };
   await store.set(key, map[key]);
   await store.set('tomb', tomb);
   await store.set('updatedAt', Date.now());
@@ -833,7 +879,7 @@ async function pushCloud(){
   if(!gToken) return;
   setSync('☁ 同步中…');
   const id = await ensureDataFile();
-  const payload = { updatedAt: (await store.get('updatedAt')) || Date.now(), notes, vids, mine, tomb };
+  const payload = { updatedAt: (await store.get('updatedAt')) || Date.now(), notes, vids, mine, cats, tomb };
   const r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
     method:'PATCH',
     headers:{ Authorization:'Bearer '+gToken, 'Content-Type':'application/json' },
@@ -859,17 +905,20 @@ async function pullCloud(){
       vids:  mergeTombs(tomb.vids,  ct.vids),
       mine:  mergeTombs(tomb.mine,  ct.mine)
     };
-    const before = JSON.stringify([notes, vids, mine]);
+    const before = JSON.stringify([notes, vids, mine, [...cats].sort()]);
     notes = mergeList(notes, d.notes, tomb.notes);
     vids  = mergeList(vids,  d.vids,  tomb.vids);
     mine  = mergeList(mine,  d.mine,  tomb.mine);
+    cats  = [...new Set([...cats, ...(d.cats||[])])]; // 自訂分類：聯集
     await store.set('notes', notes); await store.set('vids', vids);
-    await store.set('mine', mine);  await store.set('tomb', tomb);
-    const after = JSON.stringify([notes, vids, mine]);
-    if(after !== before){ renderLib(); renderJr(); renderMine(); renderStats(); refreshThumbs(); }
+    await store.set('mine', mine);  await store.set('cats', cats);
+    await store.set('tomb', tomb);
+    const after = JSON.stringify([notes, vids, mine, [...cats].sort()]);
+    if(after !== before){ renderLib(); renderJr(); renderMine(); renderStats(); renderLibChips(); refreshThumbs(); }
     // 合併結果和雲端不同（本機有對方沒有的變更）才回推，避免每次輪詢都寫檔
     const cloudNorm = JSON.stringify([
-      mergeList([], d.notes, tomb.notes), mergeList([], d.vids, tomb.vids), mergeList([], d.mine, tomb.mine)
+      mergeList([], d.notes, tomb.notes), mergeList([], d.vids, tomb.vids), mergeList([], d.mine, tomb.mine),
+      [...new Set(d.cats||[])].sort()
     ]);
     if(after !== cloudNorm){ await pushCloud(); } else { setSync('☁ 已同步'); }
   }catch(e){ setSync('☁ 同步失敗，稍後重試'); }
@@ -1139,9 +1188,13 @@ function renderMine(){
     box.innerHTML = `<div class="empty"><b>還沒有揮桿影片</b>錄下自己的揮桿，貼上連結，<br>用慢動作逐格檢視動作細節。</div>`;
   } else {
     box.innerHTML = mine.map(m=>`<div class="card">
-        <div class="meta" style="margin-bottom:8px;display:flex;align-items:center;gap:8px">
+        <div class="meta" style="margin-bottom:8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <input type="date" value="${m.date}" style="width:auto;padding:4px 8px;font-size:.75rem" onchange="dateMine(${m.id},this.value)">
-          <span>${esc(m.name)}</span>
+          <select style="width:auto;padding:4px 8px;font-size:.75rem;color:${m.club?'var(--ink)':'var(--ink-soft)'}" onchange="clubMine(${m.id},this.value)">
+            <option value="">🏌️ 桿子</option>
+            ${CLUBS.map(c=>`<option ${m.club===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+          <span style="flex:1 1 100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name)}</span>
         </div>
         ${mediaHTML(m)}
         <label class="f">這次揮桿的備註</label>
@@ -1192,6 +1245,7 @@ function noteMineInput(id, el){
   }, 600);
 }
 async function dateMine(id, val){ const m=mine.find(x=>x.id===id); if(m){ m.date=val; m.mt=Date.now(); await saveData('mine'); renderStats(); } }
+async function clubMine(id, val){ const m=mine.find(x=>x.id===id); if(m){ m.club=val; m.mt=Date.now(); await saveData('mine'); } }
 async function delMine(id){ if(!confirm('確定刪除這支影片記錄？')) return; mine=mine.filter(x=>x.id!==id); markDeleted('mine', id); delete blobs[id]; await saveData('mine'); renderMine(); renderStats(); }
 
 /* ═══════════ 進度總覽 ═══════════ */
@@ -1237,7 +1291,7 @@ function showSession(d){
       <div style="margin-top:8px">${n.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
     </div>`).join('') +
     (dayVids.length ? `<label class="f">當天的揮桿影片</label>` + dayVids.map(m=>`<div class="card" style="margin-bottom:10px">
-        <div class="meta" style="margin-bottom:6px">${esc(m.name)}</div>
+        <div class="meta" style="margin-bottom:6px">${m.club?`<span class="tag">${esc(m.club)}</span>`:''}${esc(m.name)}</div>
         ${mediaHTML(m, true)}
         ${m.note?`<p class="note-text" style="margin-bottom:0">${esc(m.note)}</p>`:''}
       </div>`).join('') : '');
