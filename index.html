@@ -114,6 +114,16 @@ label.f{display:block;font-size:.75rem;color:var(--ink-soft);margin:10px 0 5px;f
   background:none;border:none;font-size:1.25rem;cursor:pointer;color:#CFC8B6;flex:none;padding:2px;
 }
 .fav.on{color:var(--flag)}
+.vt-label{color:#DCE8DC;font-size:.68rem;letter-spacing:.12em;font-weight:700;position:relative;z-index:1}
+.mine-thumb{
+  position:relative;aspect-ratio:16/9;background:var(--fairway);border-radius:10px;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+}
+.mine-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.mt-overlay{
+  position:relative;z-index:1;background:rgba(0,0,0,.55);color:#fff;
+  padding:8px 18px;border-radius:999px;font-size:.85rem;
+}
 .vid-actions{margin-top:8px;display:flex;gap:8px}
 /* ---------- 日記時間線 ---------- */
 .tl-day{margin-bottom:18px}
@@ -203,6 +213,7 @@ dialog::backdrop{background:rgba(27,59,44,.45)}
     <span><b id="sc-vids">0</b>教學影片</span>
     <span><b id="sc-notes">0</b>練球記錄</span>
     <span><b id="sc-mine">0</b>我的揮桿</span>
+    <span id="sync-st" style="margin-left:auto"></span>
   </div>
 </header>
 
@@ -373,7 +384,10 @@ const esc = s => (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'
   const gt = await store.get('gtok');
   if(gt && gt.exp > Date.now()){
     gToken = gt.t;
-    setTimeout(()=>{ gToken = null; updateMineNotice(); }, gt.exp - Date.now());
+    setTimeout(()=>{ gToken = null; updateMineNotice(); setSync('☁ 離線（登入後自動同步）'); }, gt.exp - Date.now());
+    pullCloud().then(refreshThumbs);
+  } else {
+    setSync('☁ 離線（登入後自動同步）');
   }
   window.addEventListener('beforeunload', (e)=>{
     if(uploading){ e.preventDefault(); e.returnValue = '影片還在上傳中，離開會中斷上傳'; }
@@ -417,15 +431,22 @@ function renderChips(id, list, onPick, getCur, multi=false){
 
 /* ═══════════ 教學影片庫 ═══════════ */
 function ytId(url){
-  const m = (url||'').match(/(?:youtu\.be\/|v=|shorts\/|embed\/)([\w-]{11})/);
+  const m = (url||'').match(/(?:youtu\.be\/|[?&]v=|shorts\/|embed\/|live\/)([\w-]{11})/);
   return m ? m[1] : null;
+}
+function srcLabel(url){
+  if(!url) return '—';
+  if(url.includes('instagram.')) return 'IG';
+  if(url.includes('tiktok.')) return 'TikTok';
+  if(url.includes('facebook.') || url.includes('fb.watch')) return 'FB';
+  return '連結';
 }
 function openVidDialog(){ $('v-url').value=$('v-title').value=$('v-note').value=''; dlgVid.showModal(); }
 async function saveVid(){
   const url = $('v-url').value.trim(), title = $('v-title').value.trim();
   if(!url && !title){ alert('至少填一個連結或標題喔'); return; }
   vids.unshift({ id:Date.now(), url, title: title || url, cat: $('v-cat').value, note: $('v-note').value.trim(), fav:false, ts:Date.now() });
-  await store.set('vids', vids);
+  await saveData('vids');
   dlgVid.close(); renderLib(); renderStats();
 }
 function renderLib(){
@@ -442,7 +463,7 @@ function renderLib(){
       const yt = ytId(v.url);
       const thumb = yt ? `style="background-image:url('https://i.ytimg.com/vi/${yt}/mqdefault.jpg')"` : '';
       return `<div class="card vid-card">
-        <div class="vid-thumb" ${thumb}></div>
+        <div class="vid-thumb" ${thumb}>${yt?'':`<span class="vt-label">${srcLabel(v.url)}</span>`}</div>
         <div class="vid-body">
           <h3>${esc(v.title)}</h3>
           <span class="tag">${esc(v.cat)}</span>${v.note?`<span class="meta">${esc(v.note)}</span>`:''}
@@ -457,8 +478,8 @@ function renderLib(){
   }
   $('sc-vids').textContent = vids.length;
 }
-async function toggleFav(id){ const v=vids.find(x=>x.id===id); if(v){ v.fav=!v.fav; await store.set('vids',vids); renderLib(); renderStats(); } }
-async function delVid(id){ if(!confirm('確定刪除這支影片收藏？')) return; vids=vids.filter(x=>x.id!==id); await store.set('vids',vids); renderLib(); renderStats(); }
+async function toggleFav(id){ const v=vids.find(x=>x.id===id); if(v){ v.fav=!v.fav; await saveData('vids'); renderLib(); renderStats(); } }
+async function delVid(id){ if(!confirm('確定刪除這支影片收藏？')) return; vids=vids.filter(x=>x.id!==id); await saveData('vids'); renderLib(); renderStats(); }
 
 /* ═══════════ 練球日記：口述自動整理成列點 + 自動 hashtag ═══════════ */
 const TAG_RULES = [
@@ -560,7 +581,7 @@ async function saveNote(){
   } else {
     notes.unshift({ id:Date.now(), date: $('n-date').value, tags, text, bullets, ai });
   }
-  await store.set('notes', notes);
+  await saveData('notes');
   dlgNote.close(); renderJr(); renderStats();
 }
 /* AI 整理過→列點；否則完整呈現原文 */
@@ -602,7 +623,7 @@ function renderJr(){
   }
   $('sc-notes').textContent = notes.length;
 }
-async function delNote(id){ if(!confirm('確定刪除這則記錄？')) return; notes=notes.filter(x=>x.id!==id); await store.set('notes',notes); renderJr(); renderStats(); }
+async function delNote(id){ if(!confirm('確定刪除這則記錄？')) return; notes=notes.filter(x=>x.id!==id); await saveData('notes'); renderJr(); renderStats(); }
 
 /* ═══════════ Google Drive 串接：在 App 內直接上傳與播放 ═══════════ */
 let gcfg = { clientId:'', folderId:'' };
@@ -653,6 +674,7 @@ function ensureToken(interactive=false){
       store.set('gtok', { t:gToken, exp }); // 保存一小時內免重新登入
       setTimeout(()=>{ gToken = null; updateMineNotice(); }, exp - Date.now());
       updateMineNotice();
+      pullCloud().then(refreshThumbs);
       resolve(gToken);
     };
     tokenClient.requestAccessToken({ prompt: '' });
@@ -667,6 +689,73 @@ function updateMineNotice(){
   const b = $('btn-cloud');
   if(b && !b.disabled) b.textContent = gToken ? '＋ 選擇影片直接上傳' : '＋ 直接上傳影片到雲端';
 }
+/* ═══════════ 雲端同步：筆記與清單自動存到 Drive 的 greennotes-data.json ═══════════ */
+let syncTimer = null;
+function setSync(t){ const el = $('sync-st'); if(el) el.textContent = t; }
+async function saveData(key){
+  const map = { notes, vids, mine };
+  await store.set(key, map[key]);
+  await store.set('updatedAt', Date.now());
+  setSync('☁ 待同步…');
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(()=>{ if(gToken) pushCloud().catch(()=>setSync('☁ 同步失敗，稍後重試')); else setSync('☁ 離線（登入後自動同步）'); }, 1500);
+}
+async function ensureDataFile(){
+  if(gcfg.dataFileId) return gcfg.dataFileId;
+  const h = { Authorization:'Bearer '+gToken };
+  const q = encodeURIComponent("name='greennotes-data.json' and trashed=false");
+  const found = await (await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, {headers:h})).json();
+  if(found.files && found.files.length){ gcfg.dataFileId = found.files[0].id; }
+  else{
+    const folder = await ensureFolder();
+    const r = await (await fetch('https://www.googleapis.com/drive/v3/files', {
+      method:'POST', headers:{...h,'Content-Type':'application/json'},
+      body: JSON.stringify({ name:'greennotes-data.json', parents:[folder], mimeType:'application/json' })
+    })).json();
+    gcfg.dataFileId = r.id;
+  }
+  await store.set('gcfg', gcfg);
+  return gcfg.dataFileId;
+}
+async function pushCloud(){
+  if(!gToken) return;
+  setSync('☁ 同步中…');
+  const id = await ensureDataFile();
+  const payload = { updatedAt: (await store.get('updatedAt')) || Date.now(), notes, vids, mine };
+  const r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
+    method:'PATCH',
+    headers:{ Authorization:'Bearer '+gToken, 'Content-Type':'application/json' },
+    body: JSON.stringify(payload)
+  });
+  setSync(r.ok ? '☁ 已同步' : '☁ 同步失敗，稍後重試');
+  if(!r.ok) throw new Error('push failed');
+}
+async function pullCloud(){
+  if(!gToken) return;
+  try{
+    setSync('☁ 同步中…');
+    const id = await ensureDataFile();
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, { headers:{ Authorization:'Bearer '+gToken } });
+    if(!r.ok){ setSync('☁ 已連線'); return; }
+    const txt = await r.text();
+    if(!txt.trim()){ await pushCloud(); return; } // 雲端還是空檔：把本機推上去
+    const d = JSON.parse(txt);
+    const localT = (await store.get('updatedAt')) || 0;
+    if((d.updatedAt||0) > localT){
+      // 雲端較新：以雲端為準
+      notes = d.notes||[]; vids = d.vids||[]; mine = d.mine||[];
+      await store.set('notes', notes); await store.set('vids', vids); await store.set('mine', mine);
+      await store.set('updatedAt', d.updatedAt);
+      renderLib(); renderJr(); renderMine(); renderStats();
+      setSync('☁ 已同步');
+    } else if(localT > (d.updatedAt||0)){
+      await pushCloud(); // 本機較新：推上雲端
+    } else {
+      setSync('☁ 已同步');
+    }
+  }catch(e){ setSync('☁ 同步失敗，稍後重試'); }
+}
+
 async function ensureFolder(){
   if(gcfg.folderId) return gcfg.folderId;
   const h = { Authorization:'Bearer '+gToken };
@@ -753,9 +842,9 @@ async function addPicked(){
   let i = 0;
   pkSel.forEach(fid=>{
     const f = pkFiles.find(x=>x.id===fid);
-    mine.unshift({ id: Date.now()+(i++), driveId: fid, name: f.name, date: (f.modifiedTime||'').slice(0,10) || new Date().toISOString().slice(0,10), note:'' });
+    mine.unshift({ id: Date.now()+(i++), driveId: fid, name: f.name, thumb: f.thumbnailLink || '', date: (f.modifiedTime||'').slice(0,10) || new Date().toISOString().slice(0,10), note:'' });
   });
-  await store.set('mine', mine);
+  await saveData('mine');
   $('dlg-pick').close();
   renderMine(); renderStats();
 }
@@ -810,7 +899,7 @@ async function cloudUpload(e){
     const id = Date.now();
     blobs[id] = URL.createObjectURL(f); // 剛上傳完直接可看，不用再下載
     mine.unshift({ id, driveId:file.id, name:f.name, date:new Date().toISOString().slice(0,10), note:'' });
-    await store.set('mine', mine);
+    await saveData('mine');
     renderMine(); renderStats();
     bar.style.width = '100%';
     btn.textContent = '✓ 上傳完成！';
@@ -824,6 +913,22 @@ async function cloudUpload(e){
     keepAwake(false);
   }
 }
+/* Drive 縮圖連結會過期：有登入時自動刷新所有揮桿影片縮圖 */
+async function refreshThumbs(){
+  if(!gToken) return;
+  let changed = false;
+  for(const m of mine.filter(x=>x.driveId)){
+    try{
+      const r = await fetch(`https://www.googleapis.com/drive/v3/files/${m.driveId}?fields=thumbnailLink`, { headers:{ Authorization:'Bearer '+gToken } });
+      if(r.ok){
+        const d = await r.json();
+        if(d.thumbnailLink && d.thumbnailLink !== m.thumb){ m.thumb = d.thumbnailLink; changed = true; }
+      }
+    }catch(e){}
+  }
+  if(changed){ await saveData('mine'); renderMine(); }
+}
+
 async function loadDrive(id, btn){
   const m = mine.find(x=>x.id===id); if(!m || !m.driveId) return;
   try{
@@ -851,9 +956,26 @@ async function loadDrive(id, btn){
 
 /* ═══════════ 我的揮桿影片 ═══════════ */
 const blobs = {}; // id -> objectURL（僅本次開啟有效）
+const thumbs = {}; // 'm'+id / 'v'+id -> Drive 縮圖網址（短效連結，每次登入後重抓）
 function driveId(url){
   const m = (url||'').match(/drive\.google\.com\/file\/d\/([\w-]+)/);
   return m ? m[1] : null;
+}
+async function fetchDriveThumb(fileId){
+  try{
+    const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=thumbnailLink`, { headers:{ Authorization:'Bearer '+gToken } });
+    if(!r.ok) return null;
+    return (await r.json()).thumbnailLink || null;
+  }catch(e){ return null; }
+}
+async function refreshThumbs(){
+  if(!gToken) return;
+  const jobs = [];
+  mine.forEach(m=>{ if(m.driveId && !thumbs['m'+m.id]) jobs.push(async()=>{ const t = await fetchDriveThumb(m.driveId); if(t) thumbs['m'+m.id] = t; }); });
+  vids.forEach(v=>{ const d = driveId(v.url); if(d && !thumbs['v'+v.id]) jobs.push(async()=>{ const t = await fetchDriveThumb(d); if(t) thumbs['v'+v.id] = t; }); });
+  if(!jobs.length) return;
+  await Promise.all(jobs.slice(0,20).map(j=>j()));
+  renderMine(); renderLib();
 }
 /* 依影片類型產生播放器 HTML */
 function mediaHTML(m, compact=false){
@@ -866,8 +988,10 @@ function mediaHTML(m, compact=false){
           ${[0.25,0.5,0.75,1].map(s=>`<button onclick="setSpeed(${m.id},${s},this)" class="${s===1?'on':''}">${s===1?'正常':s+'x'}</button>`).join('')}
         </div>`}`;
     }
-    return `<div class="empty" style="padding:18px">影片保存在你的 Google 雲端<br>
-      <button class="btn small" style="margin-top:8px" onclick="loadDrive(${m.id},this)">▶ 載入播放</button></div>`;
+    return `<div class="mine-thumb" onclick="loadDrive(${m.id}, this.querySelector('.mt-overlay'))">
+      ${m.thumb ? `<img src="${m.thumb.replace(/"/g,'')}" onerror="this.remove()" alt="">` : ''}
+      <div class="mt-overlay">▶ 載入播放</div>
+    </div>`;
   }
   const yt = ytId(m.url), dv = driveId(m.url);
   if(yt){
@@ -931,9 +1055,9 @@ function relink(id, input){
   blobs[id] = URL.createObjectURL(f);
   renderMine();
 }
-async function noteMine(id, val){ const m=mine.find(x=>x.id===id); if(m){ m.note=val; await store.set('mine',mine); } }
-async function dateMine(id, val){ const m=mine.find(x=>x.id===id); if(m){ m.date=val; await store.set('mine',mine); renderStats(); } }
-async function delMine(id){ if(!confirm('確定刪除這支影片記錄？')) return; mine=mine.filter(x=>x.id!==id); delete blobs[id]; await store.set('mine',mine); renderMine(); renderStats(); }
+async function noteMine(id, val){ const m=mine.find(x=>x.id===id); if(m){ m.note=val; await saveData('mine'); } }
+async function dateMine(id, val){ const m=mine.find(x=>x.id===id); if(m){ m.date=val; await saveData('mine'); renderStats(); } }
+async function delMine(id){ if(!confirm('確定刪除這支影片記錄？')) return; mine=mine.filter(x=>x.id!==id); delete blobs[id]; await saveData('mine'); renderMine(); renderStats(); }
 
 /* ═══════════ 進度總覽 ═══════════ */
 function renderStats(){
