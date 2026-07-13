@@ -26,16 +26,17 @@
   --flag:#C64B3C;         /* 旗桿紅：僅用於收藏/刪除 */
   --line:#ECEAE3;
   --radius:18px;
-  --nav-h:60px;
+  --nav-h:54px;
   --shadow:0 1px 2px rgba(20,30,25,.04),0 4px 18px rgba(20,30,25,.06);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{-webkit-text-size-adjust:100%;height:100%}
+html{-webkit-text-size-adjust:100%;height:100%;background:var(--bg)}
 body{
   font-family:'Noto Sans TC',-apple-system,sans-serif;
   background:var(--bg);
   color:var(--ink);
-  height:100dvh;
+  /* iOS 全螢幕 App 模式下 100dvh 會算錯，固定佔滿視窗最可靠 */
+  position:fixed;inset:0;
   display:flex;flex-direction:column;
   overflow:hidden;
 }
