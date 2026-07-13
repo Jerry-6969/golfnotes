@@ -72,6 +72,8 @@ input[type=text],input[type=url],input[type=date],textarea,select{
 }
 input:focus,textarea:focus,select:focus{outline:2px solid var(--green);outline-offset:1px;border-color:var(--green)}
 textarea{min-height:90px;resize:vertical}
+textarea.mnote{min-height:44px;resize:none;overflow:hidden;line-height:1.6}
+.save-st{color:var(--green)}
 label.f{display:block;font-size:.75rem;color:var(--ink-soft);margin:10px 0 5px;font-weight:500}
 .row{display:flex;gap:8px}
 .row>*{flex:1}
@@ -913,17 +915,28 @@ async function cloudUpload(e){
     keepAwake(false);
   }
 }
-/* Drive 縮圖連結會過期：有登入時自動刷新所有揮桿影片縮圖 */
+/* Drive 縮圖需帶授權才能讀取：登入時抓下來轉成小圖保存（離線可看、不過期） */
+function blobToDataURL(b){ return new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(b); }); }
 async function refreshThumbs(){
   if(!gToken) return;
   let changed = false;
-  for(const m of mine.filter(x=>x.driveId)){
+  // 沒縮圖的、或只存了會過期網址的，都升級成永久小圖
+  for(const m of mine.filter(x=>x.driveId && (!x.thumb || x.thumb.startsWith('http')))){
     try{
-      const r = await fetch(`https://www.googleapis.com/drive/v3/files/${m.driveId}?fields=thumbnailLink`, { headers:{ Authorization:'Bearer '+gToken } });
-      if(r.ok){
-        const d = await r.json();
-        if(d.thumbnailLink && d.thumbnailLink !== m.thumb){ m.thumb = d.thumbnailLink; changed = true; }
-      }
+      const meta = await (await fetch(`https://www.googleapis.com/drive/v3/files/${m.driveId}?fields=thumbnailLink`, { headers:{ Authorization:'Bearer '+gToken } })).json();
+      let link = meta.thumbnailLink;
+      if(!link) continue;
+      link = link.replace(/=s\d+$/, '=s480');
+      try{
+        const r = await fetch(link, { headers:{ Authorization:'Bearer '+gToken } });
+        if(r.ok){
+          const data = await blobToDataURL(await r.blob());
+          m.thumb = data.length < 150000 ? data : link;
+          changed = true;
+          continue;
+        }
+      }catch(e){}
+      if(m.thumb !== link){ m.thumb = link; changed = true; } // 退而求其次存網址直接嘗試顯示
     }catch(e){}
   }
   if(changed){ await saveData('mine'); renderMine(); }
@@ -1030,12 +1043,16 @@ function renderMine(){
         </div>
         ${mediaHTML(m)}
         <label class="f">這次揮桿的備註</label>
-        <input type="text" value="${esc(m.note)}" placeholder="例：頂點停頓有做出來，但送桿還是太早翻腕"
-               onchange="noteMine(${m.id},this.value)">
-        <div style="margin-top:10px"><button class="btn small danger" onclick="delMine(${m.id})">刪除</button></div>
+        <textarea class="mnote" rows="2" placeholder="例：頂點停頓有做出來，但送桿還是太早翻腕"
+               oninput="noteMineInput(${m.id}, this)">${esc(m.note)}</textarea>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+          <button class="btn small danger" onclick="delMine(${m.id})">刪除</button>
+          <span class="meta save-st" id="nst-${m.id}"></span>
+        </div>
       </div>`).join('');
   }
   $('sc-mine').textContent = mine.length;
+  box.querySelectorAll('.mnote').forEach(autoGrow);
 }
 function setSpeed(id, s, btn){
   const v = $('v-'+id); if(!v) return;
@@ -1055,7 +1072,23 @@ function relink(id, input){
   blobs[id] = URL.createObjectURL(f);
   renderMine();
 }
-async function noteMine(id, val){ const m=mine.find(x=>x.id===id); if(m){ m.note=val; await saveData('mine'); } }
+const noteTimers = {};
+function autoGrow(el){ el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; }
+function noteMineInput(id, el){
+  autoGrow(el);
+  const st = $('nst-'+id);
+  if(st) st.textContent = '輸入中…';
+  clearTimeout(noteTimers[id]);
+  noteTimers[id] = setTimeout(async ()=>{
+    const m = mine.find(x=>x.id===id); if(!m) return;
+    m.note = el.value.trim();
+    await saveData('mine');
+    if(st){
+      st.textContent = '✓ 已儲存';
+      setTimeout(()=>{ if(st.textContent==='✓ 已儲存') st.textContent=''; }, 2500);
+    }
+  }, 600);
+}
 async function dateMine(id, val){ const m=mine.find(x=>x.id===id); if(m){ m.date=val; await saveData('mine'); renderStats(); } }
 async function delMine(id){ if(!confirm('確定刪除這支影片記錄？')) return; mine=mine.filter(x=>x.id!==id); delete blobs[id]; await saveData('mine'); renderMine(); renderStats(); }
 
