@@ -759,6 +759,12 @@ async function saveSettings(){
   gcfg.clientId = $('set-cid').value.trim();
   gcfg.aiKey = $('set-ai').value.trim();
   await store.set('gcfg', gcfg);
+  // 防呆：金鑰格式當場檢查，避免存了錯的等到整理筆記才發現
+  if(gcfg.clientId && !gcfg.clientId.endsWith('.apps.googleusercontent.com')){
+    toast('提醒：用戶端 ID 應以 .apps.googleusercontent.com 結尾，請確認有複製完整');
+  } else if(gcfg.aiKey && !/^AIza|^sk-ant/.test(gcfg.aiKey)){
+    toast('提醒：AI 金鑰格式不太對——Gemini 以 AIza 開頭、Claude 以 sk-ant 開頭，請確認沒有貼錯欄位或漏字');
+  }
   if(!gcfg.clientId){ toast('請先貼上用戶端 ID'); return; }
   try{
     await ensureToken(true);
