@@ -58,7 +58,7 @@ header{
 main{
   flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
   width:100%;max-width:640px;margin:0 auto;
-  padding:18px 18px 30px;
+  padding:18px 18px calc(var(--nav-h) + env(safe-area-inset-bottom) + 32px);
 }
 .page{display:none;animation:fade .3s cubic-bezier(.2,.7,.3,1)}
 .page.active{display:block}
@@ -120,15 +120,21 @@ label.f{display:block;font-size:.74rem;color:var(--ink-soft);margin:12px 0 6px;f
 /* ---------- 教學影片卡片 ---------- */
 .vid-card{display:flex;gap:13px;align-items:flex-start}
 .vid-thumb{
-  width:106px;height:66px;flex:none;border-radius:11px;background:var(--fairway);
+  display:block;width:106px;height:66px;flex:none;border-radius:11px;background-color:var(--fairway);
   background-size:cover;background-position:center;position:relative;overflow:hidden;
+  text-decoration:none;
 }
+.icon-btn{
+  background:none;border:none;font-size:1.02rem;cursor:pointer;padding:7px 9px;
+  color:var(--ink-soft);opacity:.7;line-height:1;
+}
+.icon-btn:active{opacity:1}
 .vid-thumb::after{
   content:"▶";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   color:#fff;font-size:.85rem;background:rgba(0,0,0,.2);
 }
 .vid-body{flex:1;min-width:0}
-.vid-body h3{font-size:.92rem;font-weight:700;line-height:1.45;margin-bottom:5px;word-break:break-word}
+.vid-body h3{font-size:.92rem;font-weight:700;line-height:1.45;margin-bottom:5px;word-break:normal;line-break:strict;overflow-wrap:anywhere}
 .fav{
   background:none;border:none;font-size:1.3rem;cursor:pointer;color:#D9D4C8;flex:none;padding:2px;
   transition:transform .15s ease,color .15s ease;
@@ -152,10 +158,11 @@ label.f{display:block;font-size:.74rem;color:var(--ink-soft);margin:12px 0 6px;f
   display:flex;align-items:center;gap:9px;margin-bottom:9px;color:var(--fairway);
 }
 .tl-date::after{content:"";flex:1;height:1px;background:#E4E1D8}
-.note-text{font-size:.9rem;line-height:1.8;white-space:pre-wrap;margin:6px 0}
+.note-text{font-size:.9rem;line-height:1.8;white-space:pre-wrap;margin:6px 0;word-break:normal;line-break:strict;overflow-wrap:anywhere}
 ul.blt{list-style:none;margin:2px 0}
 ul.blt li{
   font-size:.9rem;line-height:1.75;padding-left:17px;position:relative;margin-bottom:5px;
+  word-break:normal;line-break:strict;overflow-wrap:anywhere;
 }
 ul.blt li::before{content:"";position:absolute;left:2px;top:.7em;width:6px;height:6px;border-radius:50%;background:var(--green)}
 /* ---------- 我的影片 ---------- */
@@ -182,7 +189,7 @@ video{width:100%;border-radius:13px;background:#000;display:block}
 .stat span{font-size:.71rem;color:var(--ink-soft)}
 /* ---------- 底部導航 ---------- */
 nav{
-  flex:none;z-index:30;
+  position:fixed;bottom:0;left:0;right:0;z-index:30;
   background:rgba(255,255,255,.92);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   border-top:1px solid rgba(0,0,0,.05);
   display:flex;height:calc(var(--nav-h) + env(safe-area-inset-bottom));
@@ -222,6 +229,21 @@ dialog::backdrop{background:rgba(20,32,25,.4);backdrop-filter:blur(3px);-webkit-
 .dlg-body{padding:16px 20px 18px}
 .dlg-foot{display:flex;gap:10px;padding:0 20px 20px}
 .dlg-foot .btn{flex:1}
+/* 總覽：便利貼、熱力格、比重條 */
+.sticky{
+  background:#FFF6CF;border-radius:4px 18px 18px 18px;padding:13px 16px;margin-bottom:16px;
+  box-shadow:0 3px 12px rgba(150,120,20,.16);font-size:.9rem;line-height:1.75;color:#5C4A12;
+  word-break:normal;line-break:strict;overflow-wrap:anywhere;
+}
+.sticky .s-label{display:block;font-size:.7rem;font-weight:700;color:#A8842B;letter-spacing:.06em;margin-bottom:3px}
+.heat-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+.heat-head{font-size:.62rem;color:var(--ink-soft);text-align:center;padding-bottom:2px}
+.heat-cell{aspect-ratio:1;border-radius:7px;background:#F0EDE2;display:flex;align-items:center;justify-content:center;font-size:.62rem;color:var(--ink-soft)}
+.heat-cell.on{background:var(--green);color:#fff;font-weight:700}
+.heat-cell.blank{background:transparent}
+.alloc-bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:#F0EDE2;margin-bottom:10px}
+.alloc-legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:.74rem;color:var(--ink-soft)}
+.alloc-legend i{width:9px;height:9px;border-radius:3px;display:inline-block;margin-right:5px}
 /* Toast 提示（popover 置頂層，彈窗開著時也看得到） */
 #toast{
   position:fixed;inset:auto auto calc(var(--nav-h) + env(safe-area-inset-bottom) + 18px) 50%;
@@ -266,7 +288,6 @@ dialog::backdrop{background:rgba(20,32,25,.4);backdrop-filter:blur(3px);-webkit-
 <section class="page" id="page-journal">
   <h2 class="section">練球日記</h2>
   <div class="search"><input type="text" id="jr-search" placeholder="搜尋日記內容…"></div>
-  <div class="chips" id="jr-chips"></div>
   <button class="btn" style="width:100%;margin-bottom:14px" onclick="openNoteDialog()">＋ 寫下今天的練球心得</button>
   <div id="jr-list"></div>
 </section>
@@ -289,12 +310,17 @@ dialog::backdrop{background:rgba(20,32,25,.4);backdrop-filter:blur(3px);-webkit-
 <!-- ══════════ 頁 4：進度總覽 ══════════ -->
 <section class="page" id="page-stats">
   <h2 class="section">進度總覽</h2>
+  <div class="sticky" id="st-focus" style="display:none"></div>
   <div class="stats">
     <div class="stat"><b id="st-month">0</b><span>本月練球次數</span></div>
     <div class="stat"><b id="st-fav">0</b><span>收藏的重點影片</span></div>
     <div class="stat"><b id="st-total">0</b><span>累計練球記錄</span></div>
     <div class="stat"><b id="st-vid">0</b><span>累計揮桿影片</span></div>
   </div>
+  <h2 class="section" style="margin-top:18px">本月練習熱力</h2>
+  <div class="card"><div class="heat-grid" id="st-heat"></div></div>
+  <h2 class="section" style="margin-top:18px">近 30 天練習比重</h2>
+  <div class="card" id="st-alloc"></div>
   <h2 class="section" style="margin-top:18px">每次練球總整理</h2>
   <div id="st-sessions"></div>
 </section>
@@ -421,7 +447,7 @@ let cats = []; // 使用者自訂分類（與預設 CATS 合併使用，會同�
 const allCats = () => [...CATS, ...cats];
 let vids = [], notes = [], mine = []; // mine 只存中繼資料，影片檔為工作階段暫存
 let tomb = { notes:{}, vids:{}, mine:{} }; // 刪除墓碑（id→刪除時間）：合併時防止已刪項目從另一台裝置復活
-let libFilter = '全部', jrFilter = '全部';
+let libFilter = '全部';
 const $ = id => document.getElementById(id);
 const dlgVid = $('dlg-vid'), dlgNote = $('dlg-note');
 const esc = s => (s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -577,16 +603,20 @@ function renderLib(){
   } else {
     box.innerHTML = list.map(v=>{
       const yt = ytId(v.url);
-      const thumb = yt ? `style="background-image:url('https://i.ytimg.com/vi/${yt}/mqdefault.jpg')"` : '';
+      const thumbStyle = yt ? ` style="background-image:url('https://i.ytimg.com/vi/${yt}/mqdefault.jpg')"` : '';
+      const thumbInner = yt ? '' : `<span class="vt-label">${srcLabel(v.url)}</span>`;
+      // 縮圖即是觀看入口：有連結時整塊可點
+      const thumbEl = v.url
+        ? `<a class="vid-thumb" href="${esc(v.url)}" target="_blank" rel="noopener"${thumbStyle}>${thumbInner}</a>`
+        : `<div class="vid-thumb">${thumbInner}</div>`;
       return `<div class="card vid-card">
-        <div class="vid-thumb" ${thumb}>${yt?'':`<span class="vt-label">${srcLabel(v.url)}</span>`}</div>
+        ${thumbEl}
         <div class="vid-body">
           <h3>${esc(v.title)}</h3>
           <span class="tag">${esc(v.cat)}</span>${v.note?`<span class="meta">${esc(v.note)}</span>`:''}
-          <div class="vid-actions">
-            ${v.url?`<a class="btn small" href="${esc(v.url)}" target="_blank" rel="noopener">▶ 觀看</a>`:''}
-            <button class="btn small ghost" onclick="editVid(${v.id})">編輯</button>
-            <button class="btn small danger" onclick="delVid(${v.id})">刪除</button>
+          <div class="vid-actions" style="justify-content:flex-end;margin-top:2px">
+            <button class="icon-btn" title="編輯" onclick="editVid(${v.id})">✏️</button>
+            <button class="icon-btn" title="刪除" onclick="delVid(${v.id})">🗑️</button>
           </div>
         </div>
         <button class="fav ${v.fav?'on':''}" title="收藏為練前必看" onclick="toggleFav(${v.id})">♥</button>
@@ -598,29 +628,9 @@ function renderLib(){
 async function toggleFav(id){ const v=vids.find(x=>x.id===id); if(v){ v.fav=!v.fav; v.mt=Date.now(); await saveData('vids'); renderLib(); renderStats(); } }
 async function delVid(id){ if(!confirm('確定刪除這支影片收藏？')) return; vids=vids.filter(x=>x.id!==id); markDeleted('vids', id); await saveData('vids'); renderLib(); renderStats(); }
 
-/* ═══════════ 練球日記：口述自動整理成列點 + 自動 hashtag ═══════════ */
-const TAG_RULES = [
-  ['#上桿',['上桿','起桿','頂點']],
-  ['#下桿',['下桿','過渡','擊球']],
-  ['#節奏',['節奏','太快','太慢','速度','停頓']],
-  ['#手腕',['手腕','翻腕','腕']],
-  ['#轉髖',['轉髖','髖','骨盆','轉身']],
-  ['#重心',['重心','蹲','平衡','站穩']],
-  ['#握桿',['握桿','握把','虎口']],
-  ['#站姿瞄準',['站姿','瞄準','對準','球位','setup']],
-  ['#手肘',['手肘','肋骨','夾緊']],
-  ['#推桿',['推桿','果嶺']],
-  ['#短桿',['短桿','切球','切桿','沙坑','挖起桿','wedge']],
-  ['#開球',['開球','一號木','木桿','tee']],
-  ['#鐵桿',['鐵桿','號鐵']],
-  ['#心態',['心態','緊張','放鬆','壓力','專注','信心']],
-];
-function autoTags(t){
-  const r = TAG_RULES.filter(([,kws]) => kws.some(k => t.includes(k))).map(([tag]) => tag);
-  return r.length ? r : ['#練球'];
-}
+/* ═══════════ 練球日記：口述自動整理成列點 ═══════════ */
 /* AI 整理：把口述逐字稿真正消化成有意義的重點。依金鑰自動選擎：AIza…→Gemini，sk-ant…→Claude */
-const AI_PROMPT = '你是高爾夫練習筆記的整理助手。使用者提供口述逐字稿，請理解內容後整理成幾個完整、有意義的重點：合併屬於同一觀念的語句、去除口頭贅字、保留使用者的原意與用詞習慣，每一點是一個完整可讀的觀念，使用繁體中文。另外給 2-5 個主題標籤（#開頭，例如 #下桿 #轉髖）。只回傳 JSON，格式為 {"bullets":["重點一","重點二"],"tags":["#標籤"]}，不要包含任何其他文字或 markdown。';
+const AI_PROMPT = '你是高爾夫練習筆記的整理助手。使用者提供口述逐字稿，請理解內容後整理成幾個完整、有意義的重點：合併屬於同一觀念的語句、去除口頭贅字、保留使用者的原意與用詞習慣，每一點是一個完整可讀的觀念，使用繁體中文。只回傳 JSON，格式為 {"bullets":["重點一","重點二"]}，不要包含任何其他文字或 markdown。';
 async function aiOrganize(text){
   let raw;
   if(gcfg.aiKey.startsWith('AIza')){
@@ -678,14 +688,13 @@ function editNote(id){
 async function saveNote(){
   const text = $('n-text').value.trim();
   if(!text){ toast('寫一點今天的心得吧'); return; }
-  let bullets = null, tags = autoTags(text), ai = false;
+  let bullets = null, ai = false;
   if(gcfg.aiKey){
     const sb = $('n-save');
     sb.disabled = true; sb.textContent = 'AI 整理中…';
     try{
       const r = await aiOrganize(text);
       if(r.bullets && r.bullets.length){ bullets = r.bullets; ai = true; }
-      if(r.tags && r.tags.length){ tags = r.tags; }
     }catch(e){
       toast('AI 整理沒有成功（'+e.message+'）。先以原文保存，之後可按「編輯」重新儲存再試。');
     }finally{
@@ -694,9 +703,9 @@ async function saveNote(){
   }
   if(editingNoteId){
     const n = notes.find(x=>x.id===editingNoteId);
-    if(n){ n.date = $('n-date').value; n.text = text; n.tags = tags; n.bullets = bullets; n.ai = ai; n.mt = Date.now(); }
+    if(n){ n.date = $('n-date').value; n.text = text; n.bullets = bullets; n.ai = ai; n.mt = Date.now(); }
   } else {
-    notes.unshift({ id:Date.now(), date: $('n-date').value, tags, text, bullets, ai, mt:Date.now() });
+    notes.unshift({ id:Date.now(), date: $('n-date').value, text, bullets, ai, mt:Date.now() });
   }
   await saveData('notes');
   dlgNote.close(); renderJr(); renderStats();
@@ -711,18 +720,13 @@ function noteFirstLine(n){
   return (n.ai && n.bullets && n.bullets.length) ? n.bullets[0] : n.text.split('\n')[0];
 }
 function renderJr(){
-  // 依既有 hashtag 動態產生篩選籤
-  const allTags = [...new Set(notes.flatMap(n=>n.tags))];
-  if(jrFilter!=='全部' && !allTags.includes(jrFilter)) jrFilter='全部';
-  renderChips('jr-chips', ['全部',...allTags], c => { jrFilter=c; renderJr(); }, ()=>jrFilter);
   const q = $('jr-search').value.trim().toLowerCase();
   const list = notes.filter(n =>
-    (jrFilter==='全部' || n.tags.includes(jrFilter)) &&
-    (!q || n.text.toLowerCase().includes(q))
+    !q || (n.text + (n.bullets||[]).join(' ')).toLowerCase().includes(q)
   ).sort((a,b)=> b.date.localeCompare(a.date) || b.id-a.id);
   const box = $('jr-list');
   if(!list.length){
-    box.innerHTML = `<div class="empty"><b>日記還是空的</b>練完球用語音唸一段心得，<br>會自動整理成列點和 #標籤。</div>`;
+    box.innerHTML = `<div class="empty"><b>日記還是空的</b>練完球用語音唸一段心得，<br>會自動整理成乾淨的重點列點。</div>`;
   } else {
     const days = {};
     list.forEach(n => (days[n.date] = days[n.date]||[]).push(n));
@@ -732,8 +736,7 @@ function renderJr(){
         <div class="tl-date">${d}（${w}）</div>
         ${days[d].map(n=>`<div class="card">
           ${noteBody(n)}
-          <div style="margin:8px 0 2px">${n.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
-          <div style="display:flex;gap:8px"><button class="btn small ghost" onclick="editNote(${n.id})">編輯</button><button class="btn small danger" onclick="delNote(${n.id})">刪除</button></div>
+          <div style="display:flex;gap:8px;margin-top:8px"><button class="btn small ghost" onclick="editNote(${n.id})">編輯</button><button class="btn small danger" onclick="delNote(${n.id})">刪除</button></div>
         </div>`).join('')}
       </div>`;
     }).join('');
@@ -1257,6 +1260,49 @@ function renderStats(){
   $('st-total').textContent = notes.length;
   $('st-vid').textContent   = mine.length;
 
+  // 下次練球重點：最新一則日記的第一個重點，當作去練習場前的提醒
+  const latest = [...notes].sort((a,b)=> b.date.localeCompare(a.date) || b.id-a.id)[0];
+  const focusEl = $('st-focus');
+  if(latest){
+    const f = (noteFirstLine(latest)||'').slice(0,60);
+    focusEl.innerHTML = `<span class="s-label">📌 下次練球重點 · ${latest.date}</span>${esc(f)}`;
+    focusEl.style.display = 'block';
+  } else {
+    focusEl.style.display = 'none';
+  }
+
+  // 本月練習熱力：有記錄（日記或揮桿影片）的日子亮綠
+  const now = new Date();
+  const yy = now.getFullYear(), mo = now.getMonth();
+  const firstDay = new Date(yy, mo, 1).getDay();
+  const daysInMonth = new Date(yy, mo+1, 0).getDate();
+  const doneDays = new Set([...notes.map(n=>n.date), ...mine.map(m=>m.date)]);
+  const cells = ['日','一','二','三','四','五','六'].map(w=>`<div class="heat-head">${w}</div>`);
+  for(let i=0;i<firstDay;i++) cells.push('<div class="heat-cell blank"></div>');
+  for(let d=1;d<=daysInMonth;d++){
+    const ds = `${yy}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    cells.push(`<div class="heat-cell ${doneDays.has(ds)?'on':''}">${d}</div>`);
+  }
+  $('st-heat').innerHTML = cells.join('');
+
+  // 近 30 天練習比重：日記文字裡的球桿關鍵字統計
+  const cut30 = Date.now() - 30*86400000;
+  const recentTexts = notes
+    .filter(n => new Date(n.date+'T00:00').getTime() >= cut30)
+    .map(n => n.text + ' ' + (n.bullets||[]).join(' '));
+  const FOCUS_CATS = [
+    ['開球/木桿', ['開球','木桿','1號木','tee','Tee'], '#1B3B2C'],
+    ['鐵桿',     ['鐵桿','號鐵'],                    '#2F7D4F'],
+    ['短桿/切球', ['短桿','切','沙坑','挖起','wedge'], '#93C29F'],
+    ['推桿',     ['推桿','果嶺'],                    '#C6A54B'],
+  ];
+  const counts = FOCUS_CATS.map(([label,kws,color]) => [label, color, recentTexts.filter(t=>kws.some(k=>t.includes(k))).length]);
+  const total30 = counts.reduce((s,[,,c])=>s+c, 0);
+  $('st-alloc').innerHTML = total30
+    ? `<div class="alloc-bar">${counts.filter(([,,c])=>c).map(([,color,c])=>`<span style="flex:${c};background:${color}"></span>`).join('')}</div>
+       <div class="alloc-legend">${counts.map(([label,color,c])=>`<span><i style="background:${color}"></i>${label} ${Math.round(c/total30*100)}%</span>`).join('')}</div>`
+    : '<span class="meta">近 30 天的日記還沒提到球桿類型。寫心得時提到「開球、鐵桿、短桿、推桿」等字眼，這裡就會自動統計比重。</span>';
+
   // 每次練球總整理：依日期分組成場次卡片
   const days = {};
   notes.forEach(n => (days[n.date] = days[n.date]||[]).push(n));
@@ -1264,7 +1310,6 @@ function renderStats(){
   $('st-sessions').innerHTML = dates.length
     ? dates.map(d=>{
         const list = days[d];
-        const tags = [...new Set(list.flatMap(n=>n.tags))];
         const vidCount = mine.filter(m=>m.date===d).length;
         const w = ['日','一','二','三','四','五','六'][new Date(d+'T00:00').getDay()];
         return `<button class="card" style="width:100%;text-align:left;cursor:pointer;font-family:inherit;display:block" onclick="showSession('${d}')">
@@ -1272,7 +1317,6 @@ function renderStats(){
             <b style="font-family:'Noto Serif TC',serif;font-size:.95rem;color:var(--fairway)">${d}（${w}）</b>
             <span class="meta">${list.length} 則記錄${vidCount?`｜${vidCount} 支影片`:''} ›</span>
           </div>
-          <div style="margin-top:6px">${tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')||'<span class="meta">未標主題</span>'}</div>
           <p class="meta" style="margin-top:6px;line-height:1.6">${(()=>{const f=noteFirstLine(list[list.length-1])||'';return esc(f.slice(0,40))+(f.length>40?'…':'')})()}</p>
         </button>`;
       }).join('')
@@ -1288,7 +1332,6 @@ function showSession(d){
   $('ss-body').innerHTML =
     dayNotes.map(n=>`<div class="card" style="margin-bottom:10px">
       ${noteBody(n)}
-      <div style="margin-top:8px">${n.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}</div>
     </div>`).join('') +
     (dayVids.length ? `<label class="f">當天的揮桿影片</label>` + dayVids.map(m=>`<div class="card" style="margin-bottom:10px">
         <div class="meta" style="margin-bottom:6px">${m.club?`<span class="tag">${esc(m.club)}</span>`:''}${esc(m.name)}</div>
