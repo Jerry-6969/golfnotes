@@ -391,7 +391,7 @@ dialog::backdrop{background:rgba(20,32,25,.4);backdrop-filter:blur(3px);-webkit-
     <label class="f">OAuth 用戶端 ID</label>
     <input type="text" id="set-cid" placeholder="xxxxxxxx.apps.googleusercontent.com">
     <label class="f">AI 金鑰（選填，啟用 AI 整理筆記）</label>
-    <input type="text" id="set-ai" placeholder="Gemini（AIza…，aistudio.google.com 免費申請）或 Claude（sk-ant…）">
+    <input type="text" id="set-ai" placeholder="Gemini（AQ. 或 AIza 開頭，aistudio.google.com 免費申請）或 Claude（sk-ant…）">
     <div id="set-status" class="meta" style="margin-top:10px">狀態：未連結</div>
   </div>
   <div class="dlg-foot">
@@ -629,21 +629,22 @@ async function toggleFav(id){ const v=vids.find(x=>x.id===id); if(v){ v.fav=!v.f
 async function delVid(id){ if(!confirm('確定刪除這支影片收藏？')) return; vids=vids.filter(x=>x.id!==id); markDeleted('vids', id); await saveData('vids'); renderLib(); renderStats(); }
 
 /* ═══════════ 練球日記：口述自動整理成列點 ═══════════ */
-/* AI 整理：把口述逐字稿真正消化成有意義的重點。依金鑰自動選擎：AIza…→Gemini，sk-ant…→Claude */
+/* AI 整理：把口述逐字稿真正消化成有意義的重點。依金鑰自動選擎：sk-ant…→Claude，其他（AQ.／AIza…）→Gemini
+   （2026 年中起 Google 新發的 Gemini 金鑰改為 AQ. 開頭，AIza 為舊格式，兩者都走 Gemini） */
 const AI_PROMPT = '你是高爾夫練習筆記的整理助手。使用者提供口述逐字稿，請理解內容後整理成幾個完整、有意義的重點：合併屬於同一觀念的語句、去除口頭贅字、保留使用者的原意與用詞習慣，每一點是一個完整可讀的觀念，使用繁體中文。只回傳 JSON，格式為 {"bullets":["重點一","重點二"]}，不要包含任何其他文字或 markdown。';
 async function aiOrganize(text){
   let raw;
-  if(gcfg.aiKey.startsWith('AIza')){
-    // Gemini
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key='+encodeURIComponent(gcfg.aiKey), {
+  if(!gcfg.aiKey.startsWith('sk-ant')){
+    // Gemini（AQ. 新格式與 AIza 舊格式皆適用；金鑰走官方建議的 x-goog-api-key header）
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
       method:'POST',
-      headers:{ 'content-type':'application/json' },
+      headers:{ 'content-type':'application/json', 'x-goog-api-key': gcfg.aiKey },
       body: JSON.stringify({
         contents:[{ parts:[{ text: AI_PROMPT + '\n\n以下是逐字稿：\n' + text }] }],
         generationConfig:{ responseMimeType:'application/json' }
       })
     });
-    if(!r.ok) throw new Error('Gemini 回應失敗（'+r.status+(r.status===400||r.status===403?'，請檢查金鑰':'')+'）');
+    if(!r.ok) throw new Error('Gemini 回應失敗（'+r.status+(r.status===400||r.status===401||r.status===403?'，請檢查金鑰':'')+'）');
     const d = await r.json();
     raw = ((d.candidates||[])[0]?.content?.parts||[]).map(p=>p.text||'').join('');
   } else {
@@ -762,8 +763,8 @@ async function saveSettings(){
   // 防呆：金鑰格式當場檢查，避免存了錯的等到整理筆記才發現
   if(gcfg.clientId && !gcfg.clientId.endsWith('.apps.googleusercontent.com')){
     toast('提醒：用戶端 ID 應以 .apps.googleusercontent.com 結尾，請確認有複製完整');
-  } else if(gcfg.aiKey && !/^AIza|^sk-ant/.test(gcfg.aiKey)){
-    toast('提醒：AI 金鑰格式不太對——Gemini 以 AIza 開頭、Claude 以 sk-ant 開頭，請確認沒有貼錯欄位或漏字');
+  } else if(gcfg.aiKey && !/^AQ\.|^AIza|^sk-ant/.test(gcfg.aiKey)){
+    toast('提醒：AI 金鑰格式不太對——Gemini 以 AQ. 或 AIza 開頭、Claude 以 sk-ant 開頭，請確認沒有貼錯欄位或漏字');
   }
   if(!gcfg.clientId){ toast('請先貼上用戶端 ID'); return; }
   try{
