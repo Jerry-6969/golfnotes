@@ -134,6 +134,7 @@ label.f{display:block;font-size:.74rem;color:var(--ink-soft);margin:12px 0 6px;f
 #lib-list{display:grid;grid-template-columns:repeat(2,1fr);gap:11px}
 #lib-list .empty{grid-column:1/-1}
 .vid-card{background:var(--card);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column}
+.vid-thumb-wrap{position:relative}
 .vid-thumb{
   display:block;width:100%;aspect-ratio:16/10;background-color:#0B110E;
   background-size:cover;background-position:center;position:relative;overflow:hidden;
@@ -142,21 +143,42 @@ label.f{display:block;font-size:.74rem;color:var(--ink-soft);margin:12px 0 6px;f
 .vid-thumb::after{
   content:"▶";position:absolute;left:8px;bottom:8px;width:26px;height:26px;border-radius:50%;
   display:flex;align-items:center;justify-content:center;
-  color:var(--volt-ink);font-size:.62rem;background:rgba(200,240,74,.92);
+  color:var(--volt-ink);font-size:.62rem;background:rgba(200,240,74,.92);z-index:1;
 }
-.vid-thumb.nolink::after{display:none}
+/* 沒縮圖的設計卡：深綠漸層＋置中來源標籤，比純黑好看且可辨識 */
+.vid-thumb.noimg{background:linear-gradient(145deg,#20302A,#0E1613)}
 .vt-label{
   position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  color:#4E5C52;font-size:1rem;letter-spacing:.2em;font-weight:800;
+  color:#5A6B5E;font-size:1.1rem;letter-spacing:.22em;font-weight:800;
 }
+.vid-thumb.noimg::after{left:auto;right:8px}
 .fav{
-  position:absolute;top:6px;right:6px;z-index:2;
+  position:absolute;top:6px;right:6px;z-index:3;
   background:rgba(10,16,12,.55);border:none;font-size:.95rem;cursor:pointer;color:#8B958C;
   width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
   transition:color .15s ease,transform .15s ease;padding:0;
 }
 .fav.on{color:var(--volt);transform:scale(1.05)}
+.cover-btn{
+  position:absolute;bottom:8px;left:8px;z-index:3;cursor:pointer;
+  background:rgba(10,16,12,.62);color:#DDE6DC;font-size:.66rem;font-weight:700;
+  padding:5px 9px;border-radius:8px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+}
+.cover-btn:active{background:rgba(10,16,12,.85)}
+.cat-line{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.icon-btn.more{flex:none;font-size:1.15rem;font-weight:800;letter-spacing:.06em;padding:4px 8px;opacity:.85;color:var(--ink-soft)}
+/* iOS 風動作表 */
+dialog.sheet{width:min(92vw,420px);background:transparent;box-shadow:none;padding:0 0 env(safe-area-inset-bottom)}
+dialog.sheet::backdrop{background:rgba(5,9,7,.55)}
+dialog.sheet .sheet-item{
+  display:block;width:100%;text-align:center;border:none;cursor:pointer;font-family:inherit;
+  background:var(--card);color:var(--ink);font-size:1rem;font-weight:600;padding:16px;
+  border-bottom:1px solid var(--line);
+}
+dialog.sheet .sheet-item:first-child{border-radius:16px 16px 0 0}
+dialog.sheet .sheet-item.danger{color:var(--flag)}
+dialog.sheet .sheet-item.cancel{margin-top:8px;border-radius:16px;border-bottom:none;font-weight:800}
 .vid-body{padding:9px 11px 5px;display:flex;flex-direction:column;flex:1}
 .vid-body h3{
   font-size:.83rem;font-weight:700;line-height:1.45;margin-bottom:6px;
@@ -451,6 +473,14 @@ dialog::backdrop{background:rgba(5,9,7,.62);backdrop-filter:blur(3px);-webkit-ba
   </div>
 </dialog>
 
+<!-- 教學影片「⋯」動作表 -->
+<dialog id="dlg-vidmenu" class="sheet">
+  <button class="sheet-item" onclick="vidMenuAct('edit')">編輯</button>
+  <label class="sheet-item" onclick="event.stopPropagation()">加／換封面<input type="file" accept="image/*" hidden onchange="vidMenuCover(this)"></label>
+  <button class="sheet-item danger" onclick="vidMenuAct('del')">刪除</button>
+  <button class="sheet-item cancel" onclick="document.getElementById('dlg-vidmenu').close()">取消</button>
+</dialog>
+
 <!-- 練球場次詳情彈窗 -->
 <dialog id="dlg-session">
   <div class="dlg-head" id="ss-title">練球內容</div>
@@ -480,7 +510,7 @@ const store = {
 /* 內建 OAuth 用戶端 ID：非機密（每次 Google 登入視窗都會顯示，且已鎖定授權來源網域），
    內建後 iOS 就算清掉本機儲存，用戶端 ID 仍在，開 App 只要按一次登入即可 */
 const DEFAULT_CLIENT_ID = '647783116429-c184qcs7ft2pardrpljfchsouq7r1gt7.apps.googleusercontent.com';
-const APP_VERSION = 'v9 · 2026-07-23'; // 版本標記：用來確認手機上跑的是不是最新版
+const APP_VERSION = 'v10 · 2026-07-23'; // 版本標記：用來確認手機上跑的是不是最新版
 const CATS = ['揮桿技巧','基本動作','短桿','推桿','開球','體能與心態','賽前準備'];
 const CLUBS = ['1號木','3號木','5號木','小雞腿','3號鐵','4號鐵','5號鐵','6號鐵','7號鐵','8號鐵','9號鐵','PW','AW','SW','LW','推桿'];
 let cats = []; // 使用者自訂分類（與預設 CATS 合併使用，會同步到雲端）
@@ -608,23 +638,54 @@ function setCoverUI(has){
   $('v-cover-st').textContent = has ? '✓ 已設定封面' : '未設定';
   $('v-cover-clear').style.display = has ? '' : 'none';
 }
-function coverPicked(input){
+// 縮到 480 寬、壓 JPEG，控制資料量以便隨雲端同步
+function compressImage(file){
+  return new Promise((res, rej)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const w = Math.min(480, img.width), h = Math.round(img.height * w / img.width);
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      const url = cv.toDataURL('image/jpeg', .78);
+      URL.revokeObjectURL(img.src);
+      res(url);
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(img.src); rej(new Error('圖片讀取失敗')); };
+    img.src = URL.createObjectURL(file);
+  });
+}
+async function coverPicked(input){
   const f = input.files[0]; input.value = '';
   if(!f) return;
-  const img = new Image();
-  img.onload = ()=>{
-    // 縮到 480 寬、壓 JPEG，控制資料量以便隨雲端同步
-    const w = Math.min(480, img.width), h = Math.round(img.height * w / img.width);
-    const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
-    cv.getContext('2d').drawImage(img, 0, 0, w, h);
-    pendingCover = cv.toDataURL('image/jpeg', .78);
-    URL.revokeObjectURL(img.src);
-    setCoverUI(true);
-  };
-  img.onerror = ()=>{ toast('這張圖片讀不進來，換一張試試'); };
-  img.src = URL.createObjectURL(f);
+  try{ pendingCover = await compressImage(f); setCoverUI(true); }
+  catch(e){ toast('這張圖片讀不進來，換一張試試'); }
 }
 function clearCover(){ pendingCover = ''; setCoverUI(false); }
+// 卡片上一鍵加封面（直接寫入該影片並存檔）
+async function setVidCover(id, file){
+  const v = vids.find(x=>x.id===id); if(!v || !file) return;
+  try{
+    v.cover = await compressImage(file); v.mt = Date.now();
+    await saveData('vids'); renderLib();
+    toast('封面已設定');
+  }catch(e){ toast('這張圖片讀不進來，換一張試試'); }
+}
+function quickCover(id, input){ const f = input.files[0]; input.value=''; setVidCover(id, f); }
+// 「⋯」動作表
+let vidMenuId = null;
+function openVidMenu(id){ vidMenuId = id; document.getElementById('dlg-vidmenu').showModal(); }
+function vidMenuAct(act){
+  const id = vidMenuId;
+  document.getElementById('dlg-vidmenu').close();
+  if(act==='edit') editVid(id);
+  else if(act==='del') delVid(id);
+}
+function vidMenuCover(input){
+  const f = input.files[0]; input.value='';
+  const id = vidMenuId;
+  document.getElementById('dlg-vidmenu').close();
+  setVidCover(id, f);
+}
 function openVidDialog(){
   editingVidId = null; pendingCover = null;
   $('v-head').textContent = '收藏教學影片';
@@ -673,23 +734,26 @@ function renderLib(){
     box.innerHTML = list.map(v=>{
       const yt = ytId(v.url);
       const bg = v.cover || (yt ? `https://i.ytimg.com/vi/${yt}/mqdefault.jpg` : '');
-      const thumbStyle = bg ? ` style="background-image:url('${bg.replace(/'/g,'')}')"` : '';
-      const thumbInner = bg ? '' : `<span class="vt-label">${srcLabel(v.url)}</span>`;
-      const favBtn = `<button class="fav ${v.fav?'on':''}" title="收藏為練前必看" onclick="event.preventDefault();event.stopPropagation();toggleFav(${v.id})">♥</button>`;
-      // 縮圖即是觀看入口：有連結時整塊可點
+      const hasThumb = !!bg;
+      const thumbStyle = hasThumb ? ` style="background-image:url('${bg.replace(/'/g,'')}')"` : '';
+      // 沒縮圖時：縮圖區放置中的來源標籤（標題在下方，不重複）
+      const placeholder = hasThumb ? '' : `<span class="vt-label">${srcLabel(v.url)}</span>`;
       const thumbEl = v.url
-        ? `<a class="vid-thumb" href="${esc(v.url)}" target="_blank" rel="noopener"${thumbStyle}>${thumbInner}${favBtn}</a>`
-        : `<div class="vid-thumb nolink"${thumbStyle}>${thumbInner}${favBtn}</div>`;
+        ? `<a class="vid-thumb${hasThumb?'':' noimg'}" href="${esc(v.url)}" target="_blank" rel="noopener"${thumbStyle}>${placeholder}</a>`
+        : `<div class="vid-thumb noimg"${thumbStyle}>${placeholder}</div>`;
+      const favBtn = `<button class="fav ${v.fav?'on':''}" title="收藏為練前必看" onclick="event.preventDefault();event.stopPropagation();toggleFav(${v.id})">♥</button>`;
+      // 沒封面時提供一鍵加封面（點相機鈕→選圖，不觸發觀看）
+      const coverBtn = hasThumb ? '' :
+        `<label class="cover-btn" title="加封面" onclick="event.stopPropagation()">＋ 封面<input type="file" accept="image/*" hidden onchange="quickCover(${v.id}, this)"></label>`;
       return `<div class="vid-card">
-        ${thumbEl}
+        <div class="vid-thumb-wrap">
+          ${thumbEl}${favBtn}${coverBtn}
+        </div>
         <div class="vid-body">
           <h3>${esc(v.title)}</h3>
           <div class="vid-actions">
-            <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="tag">${esc(v.cat)}</span>${v.note?`<span class="meta">${esc(v.note)}</span>`:''}</span>
-            <span style="flex:none">
-              <button class="icon-btn" title="編輯" onclick="editVid(${v.id})">✏️</button>
-              <button class="icon-btn" title="刪除" onclick="delVid(${v.id})">🗑️</button>
-            </span>
+            <span class="cat-line"><span class="tag">${esc(v.cat)}</span>${v.note?`<span class="meta">${esc(v.note)}</span>`:''}</span>
+            <button class="icon-btn more" title="更多" onclick="openVidMenu(${v.id})">⋯</button>
           </div>
         </div>
       </div>`;
