@@ -62,7 +62,7 @@ header{
 main{
   flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
   width:100%;max-width:640px;margin:0 auto;
-  padding:14px 16px calc(var(--nav-h) + env(safe-area-inset-bottom) + 32px);
+  padding:14px 16px 24px;
   overscroll-behavior:contain;
 }
 .page{display:none;animation:fade .3s cubic-bezier(.2,.7,.3,1)}
@@ -226,15 +226,16 @@ video{width:100%;border-radius:13px;background:#000;display:block}
 .alloc-bar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:#1F2822;margin-bottom:10px}
 .alloc-legend{display:flex;flex-wrap:wrap;gap:8px 14px;font-size:.74rem;color:var(--ink-soft)}
 .alloc-legend i{width:9px;height:9px;border-radius:3px;display:inline-block;margin-right:5px}
-/* ---------- 底部導航：iOS Tab Bar 規範 ---------- */
+/* ---------- 底部導航：iOS Tab Bar 規範 ----------
+   採流式排版（flex:none）固定在 body 底部，避免全螢幕 App 模式下
+   「position:fixed 元素包在 position:fixed 父層」的 iOS 錯位 bug。
+   背景延伸到螢幕最底緣，home indicator 手勢條壓在分頁列背景上（同原生 App） */
 nav{
-  position:fixed;bottom:0;left:0;right:0;z-index:30;
-  background:rgba(14,21,18,.88);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+  flex:none;z-index:30;
+  background:var(--bg);
   border-top:1px solid rgba(255,255,255,.06);
-  /* home indicator 與分頁列共用空間：安全區收緊 12px，貼近原生 App 的緊湊感 */
-  --sab:max(calc(env(safe-area-inset-bottom) - 12px), 6px);
-  display:flex;height:calc(var(--nav-h) + var(--sab));
-  padding-bottom:var(--sab);
+  display:flex;height:calc(var(--nav-h) + env(safe-area-inset-bottom));
+  padding-bottom:env(safe-area-inset-bottom);
   user-select:none;-webkit-user-select:none;
 }
 nav button{
