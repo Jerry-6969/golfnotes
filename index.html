@@ -409,7 +409,7 @@ dialog::backdrop{background:rgba(5,9,7,.62);backdrop-filter:blur(3px);-webkit-ba
     <label class="f">日期</label>
     <input type="date" id="n-date">
     <label class="f">今天的想法（口述或打字都行）</label>
-    <textarea id="n-text" placeholder="內容會完整保留。若在 ⚙︎ 設定了 AI 金鑰，儲存時會自動整理成重點列表"></textarea>
+    <textarea id="n-text" placeholder="寫下今天的練球心得，內容會完整保留。"></textarea>
   </div>
   <div class="dlg-foot">
     <button class="btn ghost" onclick="dlgNote.close()">取消</button>
@@ -422,18 +422,16 @@ dialog::backdrop{background:rgba(5,9,7,.62);backdrop-filter:blur(3px);-webkit-ba
   <div class="dlg-head">連結 Google 雲端</div>
   <div class="dlg-body">
     <p class="meta" style="line-height:1.7;margin-bottom:6px">
-      貼上你在 Google Cloud Console 申請的 OAuth 用戶端 ID（一次性設定，免費）。
+      按「登入 Google 雲端」即可連結你的雲端硬碟，筆記與影片會自動同步。
       App 可上傳影片到你的雲端，並以唯讀方式列出影片供挑選，不會修改或刪除你雲端裡的檔案。
     </p>
-    <label class="f">OAuth 用戶端 ID</label>
+    <label class="f">OAuth 用戶端 ID（已內建，一般不用更動）</label>
     <input type="text" id="set-cid" placeholder="xxxxxxxx.apps.googleusercontent.com">
-    <label class="f">AI 金鑰（選填，啟用 AI 整理筆記）</label>
-    <input type="text" id="set-ai" placeholder="Gemini（AQ. 或 AIza 開頭，aistudio.google.com 免費申請）或 Claude（sk-ant…）">
     <div id="set-status" class="meta" style="margin-top:10px">狀態：未連結</div>
   </div>
   <div class="dlg-foot">
     <button class="btn ghost" onclick="document.getElementById('dlg-set').close()">關閉</button>
-    <button class="btn" onclick="saveSettings()">儲存並登入</button>
+    <button class="btn" onclick="saveSettings()">登入 Google 雲端</button>
   </div>
 </dialog>
 
@@ -478,6 +476,9 @@ const store = {
 };
 
 /* ═══════════ 狀態 ═══════════ */
+/* 內建 OAuth 用戶端 ID：非機密（每次 Google 登入視窗都會顯示，且已鎖定授權來源網域），
+   內建後 iOS 就算清掉本機儲存，用戶端 ID 仍在，開 App 只要按一次登入即可 */
+const DEFAULT_CLIENT_ID = '647783116429-c184qcs7ft2pardrpljfchsouq7r1gt7.apps.googleusercontent.com';
 const CATS = ['揮桿技巧','基本動作','短桿','推桿','開球','體能與心態','賽前準備'];
 const CLUBS = ['1號木','3號木','5號木','小雞腿','3號鐵','4號鐵','5號鐵','6號鐵','7號鐵','8號鐵','9號鐵','PW','AW','SW','LW','推桿'];
 let cats = []; // 使用者自訂分類（與預設 CATS 合併使用，會同步到雲端）
@@ -508,6 +509,7 @@ function toast(msg){
   tomb  = await store.get('tomb')  || {};
   ['notes','vids','mine'].forEach(k=>{ tomb[k] = tomb[k] || {}; });
   gcfg  = await store.get('gcfg')  || { clientId:'', folderId:'' };
+  if(!gcfg.clientId) gcfg.clientId = DEFAULT_CLIENT_ID; // 內建 ID，本機被清空後自動帶回
   const gt = await store.get('gtok');
   if(gt && gt.exp > Date.now()){
     gToken = gt.t;
@@ -525,11 +527,11 @@ function toast(msg){
   });
   $('mine-file-cloud').addEventListener('change', cloudUpload);
   updateMineNotice();
-  // 首次以 App（主畫面全螢幕）模式開啟：獨立儲存空間是空的，引導重新連結雲端
-  if(navigator.standalone === true && !gcfg.clientId){
+  // App（主畫面全螢幕）模式且尚未登入、又沒有本機資料時：引導按一下登入把雲端資料帶回
+  if(navigator.standalone === true && !gToken && !notes.length && !vids.length && !mine.length){
     const tip = document.createElement('div');
     tip.className = 'notice';
-    tip.textContent = '👋 歡迎使用 App 版！第一次開啟：點右上角 ⚙︎ 貼上你的用戶端 ID 與 AI 金鑰並登入 Google，筆記與影片清單會自動從雲端回來。';
+    tip.textContent = '👋 點右上角 ⚙︎ 按「登入 Google 雲端」，你的筆記與影片就會自動回來（用戶端 ID 已內建，不用再輸入）。';
     const pg = $('page-library');
     pg.insertBefore(tip, pg.querySelector('.search'));
   }
@@ -696,48 +698,7 @@ function renderLib(){
 async function toggleFav(id){ const v=vids.find(x=>x.id===id); if(v){ v.fav=!v.fav; v.mt=Date.now(); await saveData('vids'); renderLib(); renderStats(); } }
 async function delVid(id){ if(!confirm('確定刪除這支影片收藏？')) return; vids=vids.filter(x=>x.id!==id); markDeleted('vids', id); await saveData('vids'); renderLib(); renderStats(); }
 
-/* ═══════════ 練球日記：口述自動整理成列點 ═══════════ */
-/* AI 整理：把口述逐字稿真正消化成有意義的重點。依金鑰自動選擎：sk-ant…→Claude，其他（AQ.／AIza…）→Gemini
-   （2026 年中起 Google 新發的 Gemini 金鑰改為 AQ. 開頭，AIza 為舊格式，兩者都走 Gemini） */
-const AI_PROMPT = '你是高爾夫練習筆記的整理助手。使用者提供口述逐字稿，請理解內容後整理成幾個完整、有意義的重點：合併屬於同一觀念的語句、去除口頭贅字、保留使用者的原意與用詞習慣，每一點是一個完整可讀的觀念，使用繁體中文。只回傳 JSON，格式為 {"bullets":["重點一","重點二"]}，不要包含任何其他文字或 markdown。';
-async function aiOrganize(text){
-  let raw;
-  if(!gcfg.aiKey.startsWith('sk-ant')){
-    // Gemini（AQ. 新格式與 AIza 舊格式皆適用；金鑰走官方建議的 x-goog-api-key header）
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent', {
-      method:'POST',
-      headers:{ 'content-type':'application/json', 'x-goog-api-key': gcfg.aiKey },
-      body: JSON.stringify({
-        contents:[{ parts:[{ text: AI_PROMPT + '\n\n以下是逐字稿：\n' + text }] }],
-        generationConfig:{ responseMimeType:'application/json' }
-      })
-    });
-    if(!r.ok) throw new Error('Gemini 回應失敗（'+r.status+(r.status===400||r.status===401||r.status===403?'，請檢查金鑰':'')+'）');
-    const d = await r.json();
-    raw = ((d.candidates||[])[0]?.content?.parts||[]).map(p=>p.text||'').join('');
-  } else {
-    // Claude
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{
-        'content-type':'application/json',
-        'x-api-key': gcfg.aiKey,
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-access':'true'
-      },
-      body: JSON.stringify({
-        model:'claude-haiku-4-5-20251001',
-        max_tokens:1000,
-        system: AI_PROMPT,
-        messages:[{ role:'user', content:text }]
-      })
-    });
-    if(!r.ok) throw new Error('AI 回應失敗（'+r.status+(r.status===401?'，請檢查金鑰':'')+'）');
-    const d = await r.json();
-    raw = (d.content||[]).map(c=>c.text||'').join('');
-  }
-  return JSON.parse(raw.replace(/```json|```/g,'').trim());
-}
+/* ═══════════ 練球日記 ═══════════ */
 let editingNoteId = null;
 function openNoteDialog(){
   editingNoteId = null;
@@ -757,36 +718,23 @@ function editNote(id){
 async function saveNote(){
   const text = $('n-text').value.trim();
   if(!text){ toast('寫一點今天的心得吧'); return; }
-  let bullets = null, ai = false;
-  if(gcfg.aiKey){
-    const sb = $('n-save');
-    sb.disabled = true; sb.textContent = 'AI 整理中…';
-    try{
-      const r = await aiOrganize(text);
-      if(r.bullets && r.bullets.length){ bullets = r.bullets; ai = true; }
-    }catch(e){
-      toast('AI 整理沒有成功（'+e.message+'）。先以原文保存，之後可按「編輯」重新儲存再試。');
-    }finally{
-      sb.disabled = false; sb.textContent = '儲存';
-    }
-  }
   if(editingNoteId){
     const n = notes.find(x=>x.id===editingNoteId);
-    if(n){ n.date = $('n-date').value; n.text = text; n.bullets = bullets; n.ai = ai; n.mt = Date.now(); }
+    if(n){ n.date = $('n-date').value; n.text = text; n.mt = Date.now(); }
   } else {
-    notes.unshift({ id:Date.now(), date: $('n-date').value, text, bullets, ai, mt:Date.now() });
+    notes.unshift({ id:Date.now(), date: $('n-date').value, text, mt:Date.now() });
   }
   await saveData('notes');
   dlgNote.close(); renderJr(); renderStats();
 }
-/* AI 整理過→列點；否則完整呈現原文 */
+/* 舊資料若曾被 AI 整理成列點則沿用顯示，否則呈現原文 */
 function noteBody(n){
-  return (n.ai && n.bullets && n.bullets.length)
+  return (n.bullets && n.bullets.length)
     ? `<ul class="blt">${n.bullets.map(b=>`<li>${esc(b)}</li>`).join('')}</ul>`
     : `<p class="note-text">${esc(n.text)}</p>`;
 }
 function noteFirstLine(n){
-  return (n.ai && n.bullets && n.bullets.length) ? n.bullets[0] : n.text.split('\n')[0];
+  return (n.bullets && n.bullets.length) ? n.bullets[0] : n.text.split('\n')[0];
 }
 function renderJr(){
   const q = $('jr-search').value.trim().toLowerCase();
@@ -819,20 +767,15 @@ let gcfg = { clientId:'', folderId:'' };
 let gToken = null, tokenClient = null;
 
 function openSettings(){
-  $('set-cid').value = gcfg.clientId || '';
-  $('set-ai').value = gcfg.aiKey || '';
-  $('set-status').textContent = '狀態：' + (gToken ? '已連結 ✓' : (gcfg.clientId ? '已設定 ID，尚未登入' : '未連結'));
+  $('set-cid').value = gcfg.clientId || DEFAULT_CLIENT_ID;
+  $('set-status').textContent = '狀態：' + (gToken ? '已連結 ✓' : (gcfg.clientId ? '已就緒，尚未登入' : '未連結'));
   $('dlg-set').showModal();
 }
 async function saveSettings(){
-  gcfg.clientId = $('set-cid').value.trim();
-  gcfg.aiKey = $('set-ai').value.trim();
+  gcfg.clientId = $('set-cid').value.trim() || DEFAULT_CLIENT_ID;
   await store.set('gcfg', gcfg);
-  // 防呆：金鑰格式當場檢查，避免存了錯的等到整理筆記才發現
   if(gcfg.clientId && !gcfg.clientId.endsWith('.apps.googleusercontent.com')){
     toast('提醒：用戶端 ID 應以 .apps.googleusercontent.com 結尾，請確認有複製完整');
-  } else if(gcfg.aiKey && !/^AQ\.|^AIza|^sk-ant/.test(gcfg.aiKey)){
-    toast('提醒：AI 金鑰格式不太對——Gemini 以 AQ. 或 AIza 開頭、Claude 以 sk-ant 開頭，請確認沒有貼錯欄位或漏字');
   }
   if(!gcfg.clientId){ toast('請先貼上用戶端 ID'); return; }
   try{
