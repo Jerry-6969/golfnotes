@@ -136,7 +136,7 @@ label.f{display:block;font-size:.74rem;color:var(--ink-soft);margin:12px 0 6px;f
 .vid-card{background:var(--card);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);display:flex;flex-direction:column}
 .vid-thumb-wrap{position:relative}
 .vid-thumb{
-  display:block;width:100%;aspect-ratio:16/10;background-color:#0B110E;
+  display:block;width:100%;aspect-ratio:9/16;background-color:#0B110E;
   background-size:cover;background-position:center;position:relative;overflow:hidden;
   text-decoration:none;
 }
@@ -510,7 +510,7 @@ const store = {
 /* 內建 OAuth 用戶端 ID：非機密（每次 Google 登入視窗都會顯示，且已鎖定授權來源網域），
    內建後 iOS 就算清掉本機儲存，用戶端 ID 仍在，開 App 只要按一次登入即可 */
 const DEFAULT_CLIENT_ID = '647783116429-c184qcs7ft2pardrpljfchsouq7r1gt7.apps.googleusercontent.com';
-const APP_VERSION = 'v10 · 2026-07-23'; // 版本標記：用來確認手機上跑的是不是最新版
+const APP_VERSION = 'v11 · 2026-07-23'; // 版本標記：用來確認手機上跑的是不是最新版
 const CATS = ['揮桿技巧','基本動作','短桿','推桿','開球','體能與心態','賽前準備'];
 const CLUBS = ['1號木','3號木','5號木','小雞腿','3號鐵','4號鐵','5號鐵','6號鐵','7號鐵','8號鐵','9號鐵','PW','AW','SW','LW','推桿'];
 let cats = []; // 使用者自訂分類（與預設 CATS 合併使用，會同步到雲端）
