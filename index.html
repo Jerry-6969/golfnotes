@@ -38,8 +38,9 @@ body{
   font-family:'Noto Sans TC',-apple-system,sans-serif;
   background:var(--bg);
   color:var(--ink);
-  /* iOS 全螢幕 App 模式下 100dvh 會算錯，固定佔滿視窗最可靠 */
-  position:fixed;inset:0;
+  /* 最穩的 iOS standalone 版型：100svh flex 直排，分頁列在正常排版流裡永遠在可點擊圖層 */
+  height:100vh;        /* 舊瀏覽器 fallback */
+  height:100svh;       /* small viewport height：standalone 下等於整個螢幕，不會被工具列吃掉 */
   display:flex;flex-direction:column;
   overflow:hidden;
   overscroll-behavior:none;
@@ -428,6 +429,7 @@ dialog::backdrop{background:rgba(5,9,7,.62);backdrop-filter:blur(3px);-webkit-ba
     <label class="f">OAuth 用戶端 ID（已內建，一般不用更動）</label>
     <input type="text" id="set-cid" placeholder="xxxxxxxx.apps.googleusercontent.com">
     <div id="set-status" class="meta" style="margin-top:10px">狀態：未連結</div>
+    <div class="meta" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line)">App 版本：<b id="set-ver" style="color:var(--volt)">—</b></div>
   </div>
   <div class="dlg-foot">
     <button class="btn ghost" onclick="document.getElementById('dlg-set').close()">關閉</button>
@@ -479,6 +481,7 @@ const store = {
 /* 內建 OAuth 用戶端 ID：非機密（每次 Google 登入視窗都會顯示，且已鎖定授權來源網域），
    內建後 iOS 就算清掉本機儲存，用戶端 ID 仍在，開 App 只要按一次登入即可 */
 const DEFAULT_CLIENT_ID = '647783116429-c184qcs7ft2pardrpljfchsouq7r1gt7.apps.googleusercontent.com';
+const APP_VERSION = 'v8 · 2026-07-23'; // 版本標記：用來確認手機上跑的是不是最新版
 const CATS = ['揮桿技巧','基本動作','短桿','推桿','開球','體能與心態','賽前準備'];
 const CLUBS = ['1號木','3號木','5號木','小雞腿','3號鐵','4號鐵','5號鐵','6號鐵','7號鐵','8號鐵','9號鐵','PW','AW','SW','LW','推桿'];
 let cats = []; // 使用者自訂分類（與預設 CATS 合併使用，會同步到雲端）
@@ -769,6 +772,7 @@ let gToken = null, tokenClient = null;
 function openSettings(){
   $('set-cid').value = gcfg.clientId || DEFAULT_CLIENT_ID;
   $('set-status').textContent = '狀態：' + (gToken ? '已連結 ✓' : (gcfg.clientId ? '已就緒，尚未登入' : '未連結'));
+  $('set-ver').textContent = APP_VERSION;
   $('dlg-set').showModal();
 }
 async function saveSettings(){
