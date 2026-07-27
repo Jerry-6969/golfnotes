@@ -298,6 +298,25 @@ dialog::backdrop{background:rgba(5,9,7,.62);backdrop-filter:blur(3px);-webkit-ba
 .dlg-body{padding:16px 20px 18px}
 .dlg-foot{display:flex;gap:10px;padding:0 20px 20px}
 .dlg-foot .btn{flex:1}
+/* ---------- 教練課 ---------- */
+.ls-card{background:var(--card);border-radius:var(--radius);padding:15px;margin-bottom:12px;box-shadow:var(--shadow)}
+.ls-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ls-no{font-weight:800;color:var(--volt);font-size:.92rem}
+.ls-when{font-size:.76rem;color:var(--ink-soft);font-variant-numeric:tabular-nums;margin-left:6px}
+.ls-topic{font-weight:700;font-size:.98rem;margin-top:8px}
+.ls-todo{
+  background:#241F10;border-left:3px solid var(--volt);border-radius:6px 12px 12px 6px;
+  padding:9px 13px;margin-top:10px;font-size:.84rem;color:#E9F2C8;line-height:1.65;
+  word-break:normal;line-break:strict;overflow-wrap:anywhere;
+}
+.ls-todo b{color:var(--volt);font-weight:800;font-size:.7rem;letter-spacing:.06em;display:block;margin-bottom:3px}
+.ls-vidpick{display:flex;flex-direction:column;gap:8px;max-height:210px;overflow-y:auto}
+.ls-vitem{display:flex;align-items:center;gap:10px;padding:6px 8px;border:1.5px solid var(--line);border-radius:10px;cursor:pointer}
+.ls-vitem.on{border-color:var(--volt);background:rgba(200,240,74,.08)}
+.ls-vitem img,.ls-vitem .nothumb{width:54px;height:34px;object-fit:cover;border-radius:6px;background:#0B110E;flex:none}
+.ls-vitem .nm{flex:1;min-width:0;font-size:.78rem;line-height:1.35;overflow:hidden}
+.ls-vitem .ck{flex:none;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:.7rem;color:transparent}
+.ls-vitem.on .ck{background:var(--volt);border-color:var(--volt);color:var(--volt-ink)}
 /* Toast 提示（popover 置頂層，彈窗開著時也看得到） */
 #toast{
   position:fixed;inset:auto auto calc(var(--nav-h) + env(safe-area-inset-bottom) + 18px) 50%;
@@ -343,6 +362,7 @@ dialog::backdrop{background:rgba(5,9,7,.62);backdrop-filter:blur(3px);-webkit-ba
 <!-- ══════════ 頁 2：練球日記 ══════════ -->
 <section class="page" id="page-journal">
   <h2 class="section">練球日記</h2>
+  <div class="sticky" id="jr-lessontodo" style="display:none"></div>
   <div class="search"><input type="text" id="jr-search" placeholder="搜尋日記內容…"></div>
   <button class="btn" style="width:100%;margin-bottom:14px" onclick="openNoteDialog()">＋ 寫下今天的練球心得</button>
   <div id="jr-list"></div>
@@ -381,6 +401,14 @@ dialog::backdrop{background:rgba(5,9,7,.62);backdrop-filter:blur(3px);-webkit-ba
   <div id="st-sessions"></div>
 </section>
 
+<!-- ══════════ 頁 5：教練課 ══════════ -->
+<section class="page" id="page-lessons">
+  <h2 class="section">教練課</h2>
+  <div class="sticky" id="ls-progress" style="display:none"></div>
+  <div id="ls-list"></div>
+  <button class="btn ghost" id="ls-add" style="width:100%;margin-top:6px;display:none" onclick="addLesson()">＋ 新增一堂</button>
+</section>
+
 </main>
 
 <!-- 底部導航 -->
@@ -393,6 +421,9 @@ dialog::backdrop{background:rgba(5,9,7,.62);backdrop-filter:blur(3px);-webkit-ba
   </button>
   <button data-page="mine">
     <svg class="ic" viewBox="0 0 24 24"><path d="M9 20.5V4"/><path d="M9 4.6l8.6 2.4L9 9.4"/><path d="M5 20.5h8"/></svg>我的揮桿
+  </button>
+  <button data-page="lessons">
+    <svg class="ic" viewBox="0 0 24 24"><path d="M12 4L2.6 8.4 12 12.8l9.4-4.4L12 4z"/><path d="M6.6 10.6v4c0 1.4 2.4 2.5 5.4 2.5s5.4-1.1 5.4-2.5v-4"/><path d="M21.4 8.4v4.6"/></svg>教練課
   </button>
   <button data-page="stats">
     <svg class="ic" viewBox="0 0 24 24"><path d="M5.5 19.5v-5.5M12 19.5V8.5M18.5 19.5V5"/><path d="M3.5 19.5h17"/></svg>總覽
@@ -476,6 +507,30 @@ dialog::backdrop{background:rgba(5,9,7,.62);backdrop-filter:blur(3px);-webkit-ba
   </div>
 </dialog>
 
+<!-- 教練課編輯彈窗 -->
+<dialog id="dlg-lesson">
+  <div class="dlg-head" id="ls-head">教練課</div>
+  <div class="dlg-body" style="max-height:70vh;overflow-y:auto">
+    <div class="row">
+      <div><label class="f">日期</label><input type="date" id="ls-date"></div>
+      <div><label class="f">時間</label><input type="time" id="ls-time"></div>
+    </div>
+    <label class="f">這堂主題</label>
+    <input type="text" id="ls-topic" placeholder="例：推桿基礎、下桿順序">
+    <label class="f">上課筆記</label>
+    <textarea id="ls-notes" placeholder="教練教的重點、要改的動作…"></textarea>
+    <label class="f">課後要練什麼（下次練球前會提醒你）</label>
+    <textarea id="ls-todo" style="min-height:60px" placeholder="這堂的作業，例：每天空揮 50 次、推桿距離感"></textarea>
+    <label class="f">關聯揮桿影片</label>
+    <div id="ls-vidpick" class="ls-vidpick"></div>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn danger" style="flex:none" onclick="delLessonCur()">刪除</button>
+    <button class="btn ghost" onclick="document.getElementById('dlg-lesson').close()">取消</button>
+    <button class="btn" onclick="saveLesson()">儲存</button>
+  </div>
+</dialog>
+
 <!-- 教學影片「⋯」動作表 -->
 <dialog id="dlg-vidmenu" class="sheet">
   <button class="sheet-item" onclick="vidMenuAct('edit')">編輯</button>
@@ -513,13 +568,13 @@ const store = {
 /* 內建 OAuth 用戶端 ID：非機密（每次 Google 登入視窗都會顯示，且已鎖定授權來源網域），
    內建後 iOS 就算清掉本機儲存，用戶端 ID 仍在，開 App 只要按一次登入即可 */
 const DEFAULT_CLIENT_ID = '647783116429-c184qcs7ft2pardrpljfchsouq7r1gt7.apps.googleusercontent.com';
-const APP_VERSION = 'v12 · 2026-07-23'; // 版本標記：用來確認手機上跑的是不是最新版
+const APP_VERSION = 'v13 · 2026-07-27'; // 版本標記：用來確認手機上跑的是不是最新版
 const CATS = ['揮桿技巧','基本動作','短桿','推桿','開球','體能與心態','賽前準備'];
 const CLUBS = ['1號木','3號木','5號木','小雞腿','3號鐵','4號鐵','5號鐵','6號鐵','7號鐵','8號鐵','9號鐵','PW','AW','SW','LW','推桿'];
 let cats = []; // 使用者自訂分類（與預設 CATS 合併使用，會同步到雲端）
 const allCats = () => [...CATS, ...cats];
-let vids = [], notes = [], mine = []; // mine 只存中繼資料，影片檔為工作階段暫存
-let tomb = { notes:{}, vids:{}, mine:{} }; // 刪除墓碑（id→刪除時間）：合併時防止已刪項目從另一台裝置復活
+let vids = [], notes = [], mine = [], lessons = []; // mine 只存中繼資料，影片檔為工作階段暫存；lessons 教練課
+let tomb = { notes:{}, vids:{}, mine:{}, lessons:{} }; // 刪除墓碑（id→刪除時間）：合併時防止已刪項目從另一台裝置復活
 let libFilter = '全部';
 const $ = id => document.getElementById(id);
 const dlgVid = $('dlg-vid'), dlgNote = $('dlg-note');
@@ -541,8 +596,9 @@ function toast(msg){
   notes = await store.get('notes') || [];
   mine  = await store.get('mine')  || [];
   cats  = await store.get('cats')  || [];
+  lessons = await store.get('lessons') || [];
   tomb  = await store.get('tomb')  || {};
-  ['notes','vids','mine'].forEach(k=>{ tomb[k] = tomb[k] || {}; });
+  ['notes','vids','mine','lessons'].forEach(k=>{ tomb[k] = tomb[k] || {}; });
   gcfg  = await store.get('gcfg')  || { clientId:'', folderId:'' };
   if(!gcfg.clientId) gcfg.clientId = DEFAULT_CLIENT_ID; // 內建 ID，本機被清空後自動帶回
   const gt = await store.get('gtok');
@@ -582,11 +638,12 @@ function toast(msg){
       b.classList.add('on');
       $('page-'+b.dataset.page).classList.add('active');
       if(b.dataset.page==='stats') renderStats();
+      if(b.dataset.page==='lessons') renderLessons();
       // 備註欄在隱藏分頁時算不出高度，切進來時重算一次
       if(b.dataset.page==='mine') document.querySelectorAll('#mine-list .mnote').forEach(autoGrow);
     });
   });
-  renderLib(); renderJr(); renderMine(); renderStats();
+  renderLib(); renderJr(); renderMine(); renderStats(); renderLessons();
 })();
 
 function renderChips(id, list, onPick, getCur, multi=false){
@@ -806,6 +863,7 @@ function noteFirstLine(n){
   return (n.bullets && n.bullets.length) ? n.bullets[0] : n.text.split('\n')[0];
 }
 function renderJr(){
+  renderLessonTodo();
   const q = $('jr-search').value.trim().toLowerCase();
   const list = notes.filter(n =>
     !q || (n.text + (n.bullets||[]).join(' ')).toLowerCase().includes(q)
@@ -904,7 +962,7 @@ let syncTimer = null;
 function setSync(t){ const el = $('sync-st'); if(el) el.textContent = t; }
 function markDeleted(kind, id){ tomb[kind][id] = Date.now(); }
 async function saveData(key){
-  const map = { notes, vids, mine, cats };
+  const map = { notes, vids, mine, cats, lessons };
   await store.set(key, map[key]);
   await store.set('tomb', tomb);
   await store.set('updatedAt', Date.now());
@@ -970,7 +1028,7 @@ async function pushCloud(){
   if(!gToken) return;
   setSync('☁ 同步中…');
   const id = await ensureDataFile();
-  const payload = { updatedAt: (await store.get('updatedAt')) || Date.now(), notes, vids, mine, cats, tomb };
+  const payload = { updatedAt: (await store.get('updatedAt')) || Date.now(), notes, vids, mine, cats, lessons, tomb };
   const r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
     method:'PATCH',
     headers:{ Authorization:'Bearer '+gToken, 'Content-Type':'application/json' },
@@ -994,22 +1052,24 @@ async function pullCloud(){
     tomb = {
       notes: mergeTombs(tomb.notes, ct.notes),
       vids:  mergeTombs(tomb.vids,  ct.vids),
-      mine:  mergeTombs(tomb.mine,  ct.mine)
+      mine:  mergeTombs(tomb.mine,  ct.mine),
+      lessons: mergeTombs(tomb.lessons, ct.lessons)
     };
-    const before = JSON.stringify([notes, vids, mine, [...cats].sort()]);
+    const before = JSON.stringify([notes, vids, mine, lessons, [...cats].sort()]);
     notes = mergeList(notes, d.notes, tomb.notes);
     vids  = mergeList(vids,  d.vids,  tomb.vids);
     mine  = mergeList(mine,  d.mine,  tomb.mine);
+    lessons = mergeList(lessons, d.lessons, tomb.lessons);
     cats  = [...new Set([...cats, ...(d.cats||[])])]; // 自訂分類：聯集
     await store.set('notes', notes); await store.set('vids', vids);
     await store.set('mine', mine);  await store.set('cats', cats);
-    await store.set('tomb', tomb);
-    const after = JSON.stringify([notes, vids, mine, [...cats].sort()]);
-    if(after !== before){ renderLib(); renderJr(); renderMine(); renderStats(); renderLibChips(); refreshThumbs(); }
+    await store.set('lessons', lessons); await store.set('tomb', tomb);
+    const after = JSON.stringify([notes, vids, mine, lessons, [...cats].sort()]);
+    if(after !== before){ renderLib(); renderJr(); renderMine(); renderStats(); renderLessons(); renderLibChips(); refreshThumbs(); }
     // 合併結果和雲端不同（本機有對方沒有的變更）才回推，避免每次輪詢都寫檔
     const cloudNorm = JSON.stringify([
       mergeList([], d.notes, tomb.notes), mergeList([], d.vids, tomb.vids), mergeList([], d.mine, tomb.mine),
-      [...new Set(d.cats||[])].sort()
+      mergeList([], d.lessons, tomb.lessons), [...new Set(d.cats||[])].sort()
     ]);
     if(after !== cloudNorm){ await pushCloud(); } else { setSync('☁ 已同步'); }
   }catch(e){ setSync('☁ 同步失敗，稍後重試'); }
@@ -1427,6 +1487,123 @@ function showSession(d){
         ${m.note?`<p class="note-text" style="margin-bottom:0">${esc(m.note)}</p>`:''}
       </div>`).join('') : '');
   $('dlg-session').showModal();
+}
+
+/* ═══════════ 教練課 ═══════════ */
+const WK = ['日','一','二','三','四','五','六'];
+function lessonWhen(l){
+  if(!l.date) return '日期未定';
+  const w = WK[new Date(l.date+'T00:00').getDay()];
+  return `${l.date}（${w}）${l.time?' '+l.time:''}`;
+}
+function renderLessons(){
+  const box = $('ls-list');
+  if(!lessons.length){
+    box.innerHTML = `<div class="empty"><b>還沒有課程</b>你的教練課從這裡開始。<br>先建立 10 堂框架，日期和筆記之後再逐堂補。</div>
+      <button class="btn" style="width:100%;margin-top:12px" onclick="seedLessons()">建立 10 堂課程框架</button>`;
+    $('ls-progress').style.display='none';
+    $('ls-add').style.display='none';
+    return;
+  }
+  $('ls-add').style.display='';
+  const today = new Date().toISOString().slice(0,10);
+  const done = lessons.filter(l=> l.date && l.date <= today).length;
+  const next = [...lessons].filter(l=> l.date && l.date > today).sort((a,b)=> a.date.localeCompare(b.date))[0];
+  $('ls-progress').style.display='block';
+  $('ls-progress').innerHTML = `<span class="s-label">🎓 課程進度</span>已上 ${done} / ${lessons.length} 堂` +
+    (next ? `　·　下一堂：${lessonWhen(next)}` : '');
+  const sorted = [...lessons].sort((a,b)=> (a.no||0)-(b.no||0));
+  box.innerHTML = sorted.map(l=>{
+    const vids = (l.videoIds||[]).map(id=>mine.find(m=>m.id===id)).filter(Boolean);
+    return `<div class="ls-card">
+      <div class="ls-top">
+        <span><span class="ls-no">第 ${l.no} 堂</span><span class="ls-when">${lessonWhen(l)}</span></span>
+        <button class="btn small ghost" style="flex:none" onclick="editLesson(${l.id})">編輯</button>
+      </div>
+      ${l.topic?`<div class="ls-topic">${esc(l.topic)}</div>`:''}
+      ${l.notes?`<p class="note-text">${esc(l.notes)}</p>`:'<p class="meta" style="margin-top:6px">尚未填寫上課筆記</p>'}
+      ${l.todo?`<div class="ls-todo"><b>課後要練</b>${esc(l.todo)}</div>`:''}
+      ${vids.length?`<label class="f">當堂揮桿影片</label>`+vids.map(m=>`<div style="margin-bottom:8px"><div class="meta" style="margin-bottom:4px">${m.club?`<span class="tag">${esc(m.club)}</span>`:''}${esc(m.name||'')}</div>${mediaHTML(m, true)}</div>`).join(''):''}
+    </div>`;
+  }).join('');
+}
+async function seedLessons(){
+  if(lessons.length) return;
+  const base = Date.now();
+  for(let i=1;i<=10;i++){
+    lessons.push({ id: base+i, no:i, date: i===1?'2026-08-21':'', time:'', topic:'', notes:'', todo:'', videoIds:[], mt: base+i });
+  }
+  await saveData('lessons');
+  renderLessons();
+  toast('已建立 10 堂課程框架');
+}
+async function addLesson(){
+  const no = lessons.reduce((m,l)=>Math.max(m,l.no||0),0) + 1;
+  const l = { id:Date.now(), no, date:'', time:'', topic:'', notes:'', todo:'', videoIds:[], mt:Date.now() };
+  lessons.push(l);
+  await saveData('lessons');
+  renderLessons();
+  editLesson(l.id);
+}
+let editingLessonId = null, lessonPickSel = new Set();
+function editLesson(id){
+  const l = lessons.find(x=>x.id===id); if(!l) return;
+  editingLessonId = id;
+  $('ls-head').textContent = `第 ${l.no} 堂`;
+  $('ls-date').value = l.date||'';
+  $('ls-time').value = l.time||'';
+  $('ls-topic').value = l.topic||'';
+  $('ls-notes').value = l.notes||'';
+  $('ls-todo').value = l.todo||'';
+  renderLessonVidPick(l.videoIds||[]);
+  $('dlg-lesson').showModal();
+}
+function renderLessonVidPick(selected){
+  lessonPickSel = new Set(selected);
+  const box = $('ls-vidpick');
+  if(!mine.length){ box.innerHTML = '<span class="meta">還沒有揮桿影片可關聯。先到「我的揮桿」加入影片。</span>'; return; }
+  box.innerHTML = mine.map(m=>{
+    const thumb = m.thumb ? `<img src="${(m.thumb||'').replace(/"/g,'')}" onerror="this.style.visibility='hidden'">` : `<div class="nothumb"></div>`;
+    return `<div class="ls-vitem ${lessonPickSel.has(m.id)?'on':''}" onclick="toggleLessonVid(${m.id}, this)">
+      ${thumb}
+      <div class="nm">${esc(m.name||'影片')}<br><span class="meta">${m.date||''}${m.club?' · '+esc(m.club):''}</span></div>
+      <span class="ck">✓</span>
+    </div>`;
+  }).join('');
+}
+function toggleLessonVid(id, el){
+  if(lessonPickSel.has(id)){ lessonPickSel.delete(id); el.classList.remove('on'); }
+  else { lessonPickSel.add(id); el.classList.add('on'); }
+}
+async function saveLesson(){
+  const l = lessons.find(x=>x.id===editingLessonId); if(!l) return;
+  l.date = $('ls-date').value;
+  l.time = $('ls-time').value;
+  l.topic = $('ls-topic').value.trim();
+  l.notes = $('ls-notes').value.trim();
+  l.todo = $('ls-todo').value.trim();
+  l.videoIds = [...lessonPickSel];
+  l.mt = Date.now();
+  await saveData('lessons');
+  $('dlg-lesson').close();
+  renderLessons(); renderJr();
+}
+async function delLessonCur(){
+  if(!confirm('確定刪除這一堂？')) return;
+  lessons = lessons.filter(x=>x.id!==editingLessonId);
+  markDeleted('lessons', editingLessonId);
+  await saveData('lessons');
+  $('dlg-lesson').close();
+  renderLessons();
+}
+/* 練球日記頁：把最新一堂教練課的「課後要練」帶到練球前提醒 */
+function renderLessonTodo(){
+  const el = $('jr-lessontodo'); if(!el) return;
+  const withTodo = lessons.filter(l=>l.todo).sort((a,b)=> (b.date||'').localeCompare(a.date||'') || (b.no||0)-(a.no||0));
+  if(!withTodo.length){ el.style.display='none'; return; }
+  const l = withTodo[0];
+  el.style.display='block';
+  el.innerHTML = `<span class="s-label">📌 上課後要練（第 ${l.no} 堂）</span>${esc(l.todo)}`;
 }
 </script>
 </body>
