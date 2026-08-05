@@ -400,11 +400,12 @@ dialog::backdrop{background:rgba(5,9,7,.62);backdrop-filter:blur(3px);-webkit-ba
 <section class="page" id="page-videos">
   <h2 class="section">我的影片庫</h2>
   <div class="notice" id="vault-notice">☁️ 影片會存到你的 Google 雲端「果嶺筆記／影片庫」資料夾，上傳後手機可安心刪除、省空間，隨時回來看。</div>
-  <button class="btn" style="width:100%;margin-bottom:8px" onclick="vaultUploadClick()">＋ 上傳影片到雲端</button>
+  <button class="btn" id="vault-btn" style="width:100%;margin-bottom:8px" onclick="vaultUploadClick()">＋ 上傳影片到雲端（可多選）</button>
   <div id="vault-up-wrap" style="display:none;background:#1F2822;border-radius:6px;height:8px;margin-bottom:14px;overflow:hidden">
     <div id="vault-up-bar" style="height:100%;width:0%;background:var(--volt);transition:width .3s"></div>
   </div>
-  <input type="file" id="vault-file" accept="video/*" hidden>
+  <input type="file" id="vault-file" accept="video/*" multiple hidden>
+  <div style="text-align:right;margin-bottom:10px"><button class="btn small ghost" id="vault-refresh" onclick="syncVaultFromDrive(true)">↻ 從雲端重新整理</button></div>
   <div id="vault-list"></div>
 </section>
 
@@ -585,10 +586,11 @@ const store = {
 /* 內建 OAuth 用戶端 ID：非機密（每次 Google 登入視窗都會顯示，且已鎖定授權來源網域），
    內建後 iOS 就算清掉本機儲存，用戶端 ID 仍在，開 App 只要按一次登入即可 */
 const DEFAULT_CLIENT_ID = '647783116429-c184qcs7ft2pardrpljfchsouq7r1gt7.apps.googleusercontent.com';
-const APP_VERSION = 'v14 · 2026-07-27'; // 版本標記：用來確認手機上跑的是不是最新版
+const APP_VERSION = 'v15 · 2026-07-27'; // 版本標記：用來確認手機上跑的是不是最新版
 const CATS = ['揮桿技巧','基本動作','短桿','推桿','開球','體能與心態','賽前準備'];
 const CLUBS = ['1號木','3號木','5號木','小雞腿','3號鐵','4號鐵','5號鐵','6號鐵','7號鐵','8號鐵','9號鐵','PW','AW','SW','LW','推桿'];
 let cats = []; // 使用者自訂分類（與預設 CATS 合併使用，會同步到雲端）
+let vaultHidden = []; // 已從影片庫移除的 driveId（避免從雲端資料夾掃描時又被拉回來），聯集同步
 const allCats = () => [...CATS, ...cats];
 let vids = [], notes = [], mine = [], lessons = [], clips = []; // mine=揮桿分析；lessons=教練課；clips=我的影片庫雲端存檔
 let tomb = { notes:{}, vids:{}, mine:{}, lessons:{}, clips:{} }; // 刪除墓碑（id→刪除時間）：合併時防止已刪項目從另一台裝置復活
@@ -615,6 +617,7 @@ function toast(msg){
   cats  = await store.get('cats')  || [];
   lessons = await store.get('lessons') || [];
   clips = await store.get('clips') || [];
+  vaultHidden = await store.get('vaultHidden') || [];
   tomb  = await store.get('tomb')  || {};
   ['notes','vids','mine','lessons','clips'].forEach(k=>{ tomb[k] = tomb[k] || {}; });
   gcfg  = await store.get('gcfg')  || { clientId:'', folderId:'' };
@@ -656,7 +659,7 @@ function toast(msg){
       document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
       b.classList.add('on');
       $('page-'+b.dataset.page).classList.add('active');
-      if(b.dataset.page==='videos') renderVideos();
+      if(b.dataset.page==='videos'){ renderVideos(); syncVaultFromDrive(); refreshThumbs(); }
       if(b.dataset.page==='lessons') renderLessons();
       // 備註欄在隱藏分頁時算不出高度，切進來時重算一次
       if(b.dataset.page==='mine') document.querySelectorAll('#mine-list .mnote').forEach(autoGrow);
@@ -981,7 +984,7 @@ let syncTimer = null;
 function setSync(t){ const el = $('sync-st'); if(el) el.textContent = t; }
 function markDeleted(kind, id){ tomb[kind][id] = Date.now(); }
 async function saveData(key){
-  const map = { notes, vids, mine, cats, lessons, clips };
+  const map = { notes, vids, mine, cats, lessons, clips, vaultHidden };
   await store.set(key, map[key]);
   await store.set('tomb', tomb);
   await store.set('updatedAt', Date.now());
@@ -1047,7 +1050,7 @@ async function pushCloud(){
   if(!gToken) return;
   setSync('☁ 同步中…');
   const id = await ensureDataFile();
-  const payload = { updatedAt: (await store.get('updatedAt')) || Date.now(), notes, vids, mine, cats, lessons, clips, tomb };
+  const payload = { updatedAt: (await store.get('updatedAt')) || Date.now(), notes, vids, mine, cats, lessons, clips, vaultHidden, tomb };
   const r = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media`, {
     method:'PATCH',
     headers:{ Authorization:'Bearer '+gToken, 'Content-Type':'application/json' },
@@ -1081,10 +1084,13 @@ async function pullCloud(){
     mine  = mergeList(mine,  d.mine,  tomb.mine);
     lessons = mergeList(lessons, d.lessons, tomb.lessons);
     clips = mergeList(clips, d.clips, tomb.clips);
+    dedupeClips(); // 依 driveId 去重（多裝置各自掃描造成的重複）
     cats  = [...new Set([...cats, ...(d.cats||[])])]; // 自訂分類：聯集
+    vaultHidden = [...new Set([...vaultHidden, ...(d.vaultHidden||[])])]; // 已移除 driveId：聯集
     await store.set('notes', notes); await store.set('vids', vids);
     await store.set('mine', mine);  await store.set('cats', cats);
-    await store.set('lessons', lessons); await store.set('clips', clips); await store.set('tomb', tomb);
+    await store.set('lessons', lessons); await store.set('clips', clips);
+    await store.set('vaultHidden', vaultHidden); await store.set('tomb', tomb);
     const after = JSON.stringify([notes, vids, mine, lessons, clips, [...cats].sort()]);
     if(after !== before){ renderLib(); renderJr(); renderMine(); renderVideos(); renderLessons(); renderLibChips(); refreshThumbs(); }
     // 合併結果和雲端不同（本機有對方沒有的變更）才回推，避免每次輪詢都寫檔
@@ -1651,42 +1657,106 @@ function vaultUploadClick(){
   }
   $('vault-file').click();
 }
+// 用影片檔案的時間／檔名當「拍攝日期」
+function shotDateFromFile(f){
+  const m = (f.name||'').match(/(20\d{2})[-_]?(\d{2})[-_]?(\d{2})/); // 檔名含日期優先
+  if(m) return `${m[1]}-${m[2]}-${m[3]}`;
+  if(f.lastModified) return new Date(f.lastModified).toISOString().slice(0,10);
+  if(f.modifiedTime) return (f.modifiedTime||'').slice(0,10);
+  return new Date().toISOString().slice(0,10);
+}
 async function vaultUpload(e){
-  const f = e.target.files[0]; e.target.value = '';
-  if(!f) return;
-  const mb = f.size/1048576;
-  if(mb > 300 && !confirm(`這支影片有 ${mb.toFixed(0)} MB，用行動網路上傳會很久，建議連 Wi-Fi 再傳。仍要繼續嗎？`)) return;
-  const wrap = $('vault-up-wrap'), bar = $('vault-up-bar');
+  const files = [...e.target.files]; e.target.value = '';
+  if(!files.length) return;
+  const totalMb = files.reduce((s,f)=>s+f.size,0)/1048576;
+  if(totalMb > 500 && !confirm(`這批影片共約 ${totalMb.toFixed(0)} MB，用行動網路上傳會很久，建議連 Wi-Fi 再傳。仍要繼續嗎？`)) return;
+  const wrap = $('vault-up-wrap'), bar = $('vault-up-bar'), btn = $('vault-btn');
   try{
     await ensureToken();
     const folder = await ensureVaultFolder();
-    uploading = true; await keepAwake(true);
-    wrap.style.display = 'block'; bar.style.width = '0%';
-    // 用影片檔案本身的時間當「拍攝日期」分組
-    const shot = f.lastModified ? new Date(f.lastModified).toISOString().slice(0,10) : new Date().toISOString().slice(0,10);
-    const meta = { name: `${shot}_${f.name}`, parents:[folder] };
-    const init = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
-      method:'POST',
-      headers:{ Authorization:'Bearer '+gToken, 'Content-Type':'application/json', 'X-Upload-Content-Type': f.type||'video/mp4' },
-      body: JSON.stringify(meta)
-    });
-    if(!init.ok) throw new Error('建立上傳工作階段失敗');
-    const session = init.headers.get('Location');
-    const file = await putWithProgress(session, f, (done, total)=>{ bar.style.width = Math.round(done/total*100) + '%'; });
-    const id = Date.now();
-    blobs[id] = URL.createObjectURL(f); // 剛上傳完直接可看
-    clips.unshift({ id, driveId:file.id, name:f.name, shotDate:shot, thumb:'', mt:Date.now() });
-    await saveData('clips');
-    renderVideos();
+    uploading = true; btn.disabled = true; await keepAwake(true);
+    wrap.style.display = 'block';
+    let n = 0, ok = 0;
+    for(const f of files){
+      n++; bar.style.width = '0%';
+      btn.textContent = files.length>1 ? `上傳中（${n}/${files.length}）— 請保持螢幕開啟` : '上傳中 — 請保持螢幕開啟';
+      const shot = shotDateFromFile(f);
+      try{
+        const meta = { name: `${shot}_${f.name}`, parents:[folder] };
+        const init = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable', {
+          method:'POST',
+          headers:{ Authorization:'Bearer '+gToken, 'Content-Type':'application/json', 'X-Upload-Content-Type': f.type||'video/mp4' },
+          body: JSON.stringify(meta)
+        });
+        if(!init.ok) throw new Error('建立上傳工作階段失敗');
+        const session = init.headers.get('Location');
+        const file = await putWithProgress(session, f, (done, total)=>{ bar.style.width = Math.round(done/total*100) + '%'; });
+        const id = Date.now() + n;
+        blobs[id] = URL.createObjectURL(f); // 剛上傳完直接可看
+        clips.unshift({ id, driveId:file.id, name:f.name, shotDate:shot, thumb:'', mt:Date.now() });
+        ok++;
+        await saveData('clips'); renderVideos();
+      }catch(err){ toast(`第 ${n} 支上傳失敗：${err.message}`); }
+    }
     bar.style.width = '100%';
     setTimeout(()=>{ wrap.style.display='none'; }, 1200);
-    refreshThumbs();
-    toast('✓ 已上傳到雲端，手機可以刪掉這支影片省空間');
+    // Drive 縮圖由 Google 背景生成，要一點時間，隔幾秒多抓幾次
+    [3000, 9000, 20000].forEach(ms => setTimeout(()=>refreshThumbs(), ms));
+    toast(`✓ 已上傳 ${ok} 支到雲端，手機可以刪掉這些影片省空間`);
   }catch(err){
     toast('上傳沒有成功：' + err.message);
     wrap.style.display = 'none';
   }finally{
-    uploading = false; keepAwake(false);
+    uploading = false; btn.disabled = false;
+    btn.textContent = '＋ 上傳影片到雲端（可多選）';
+    keepAwake(false);
+  }
+}
+// 掃描 Drive 的「影片庫」資料夾，把不在庫中的影片加進來（含你直接在 Drive 上傳的）
+// 多裝置各自掃描同一 Drive 檔案會產生不同 id，依 driveId 去重（保留較早的）
+function dedupeClips(){
+  const seen = new Map();
+  for(const c of clips){
+    const key = c.driveId || ('id:'+c.id);
+    const prev = seen.get(key);
+    if(!prev || (c.mt||0) < (prev.mt||0)) seen.set(key, c);
+  }
+  const arr = [...seen.values()].sort((a,b)=> b.id-a.id);
+  const changed = arr.length !== clips.length;
+  clips = arr;
+  return changed;
+}
+let vaultSyncing = false;
+async function syncVaultFromDrive(manual){
+  if(!gToken){ if(manual) toast('請先登入 Google 雲端（點右上角 ⚙︎）'); return; }
+  if(vaultSyncing) return;
+  vaultSyncing = true;
+  const btn = $('vault-refresh'); if(btn && manual){ btn.disabled = true; btn.textContent = '整理中…'; }
+  try{
+    const folder = await ensureVaultFolder();
+    const params = new URLSearchParams({
+      q: `'${folder}' in parents and mimeType contains 'video/' and trashed=false`,
+      fields: 'files(id,name,modifiedTime,thumbnailLink)',
+      pageSize: '300', orderBy: 'modifiedTime desc'
+    });
+    let r = await fetch('https://www.googleapis.com/drive/v3/files?'+params, { headers:{ Authorization:'Bearer '+gToken } });
+    if(r.status===401||r.status===403){ gToken=null; await store.set('gtok',null); await ensureToken(true); r = await fetch('https://www.googleapis.com/drive/v3/files?'+params, { headers:{ Authorization:'Bearer '+gToken } }); }
+    if(!r.ok) throw new Error('讀取清單失敗（'+r.status+'）');
+    const files = (await r.json()).files || [];
+    const have = new Set(clips.map(c=>c.driveId));
+    const hidden = new Set(vaultHidden);
+    let added = 0;
+    files.forEach(f=>{
+      if(have.has(f.id) || hidden.has(f.id)) return;
+      clips.unshift({ id: Date.now()+Math.floor(Math.random()*100000), driveId:f.id, name:f.name, shotDate: shotDateFromFile(f), thumb: f.thumbnailLink||'', mt: Date.now() });
+      added++;
+    });
+    if(added){ await saveData('clips'); renderVideos(); refreshThumbs(); }
+    if(manual) toast(added ? `從雲端加入 ${added} 支影片` : '已是最新，沒有新影片');
+  }catch(e){ if(manual) toast('重新整理沒有成功：'+e.message); }
+  finally{
+    vaultSyncing = false;
+    if(btn){ btn.disabled = false; btn.textContent = '↻ 從雲端重新整理'; }
   }
 }
 function renderVideos(){
@@ -1736,6 +1806,8 @@ async function openClip(id){
 function closeClip(){ $('dlg-clip').close(); $('clip-body').innerHTML = ''; curClipId = null; }
 async function delClipCur(){
   if(!confirm('從影片庫移除這支？（Google 雲端裡的原始檔案不會被刪除）')) return;
+  const c = clips.find(x=>x.id===curClipId);
+  if(c && c.driveId && !vaultHidden.includes(c.driveId)) vaultHidden.push(c.driveId); // 記住，避免掃描時又拉回來
   clips = clips.filter(x=>x.id!==curClipId);
   markDeleted('clips', curClipId);
   delete blobs[curClipId];
