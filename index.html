@@ -311,6 +311,11 @@ dialog::backdrop{background:rgba(5,9,7,.62);backdrop-filter:blur(3px);-webkit-ba
   background:rgba(200,240,74,.92);color:var(--volt-ink);font-size:.7rem;
   display:flex;align-items:center;justify-content:center;
 }
+.vault-dur{
+  position:absolute;right:6px;bottom:6px;background:rgba(10,16,12,.82);color:#F2F5F0;
+  font-size:.68rem;font-weight:600;font-variant-numeric:tabular-nums;
+  padding:2px 6px;border-radius:6px;letter-spacing:.02em;
+}
 /* ---------- 教練課 ---------- */
 .ls-card{background:var(--card);border-radius:var(--radius);padding:15px;margin-bottom:12px;box-shadow:var(--shadow)}
 .ls-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -586,7 +591,7 @@ const store = {
 /* 內建 OAuth 用戶端 ID：非機密（每次 Google 登入視窗都會顯示，且已鎖定授權來源網域），
    內建後 iOS 就算清掉本機儲存，用戶端 ID 仍在，開 App 只要按一次登入即可 */
 const DEFAULT_CLIENT_ID = '647783116429-c184qcs7ft2pardrpljfchsouq7r1gt7.apps.googleusercontent.com';
-const APP_VERSION = 'v15 · 2026-07-27'; // 版本標記：用來確認手機上跑的是不是最新版
+const APP_VERSION = 'v16 · 2026-08-29'; // 版本標記：用來確認手機上跑的是不是最新版
 const CATS = ['揮桿技巧','基本動作','短桿','推桿','開球','體能與心態','賽前準備'];
 const CLUBS = ['1號木','3號木','5號木','小雞腿','3號鐵','4號鐵','5號鐵','6號鐵','7號鐵','8號鐵','9號鐵','PW','AW','SW','LW','推桿'];
 let cats = []; // 使用者自訂分類（與預設 CATS 合併使用，會同步到雲端）
@@ -1263,24 +1268,39 @@ async function cloudUpload(e){
 }
 /* Drive 縮圖需帶授權才能讀取：登入時抓下來轉成小圖保存（離線可看、不過期） */
 function blobToDataURL(b){ return new Promise(res=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.readAsDataURL(b); }); }
+function fmtDur(s){ if(!s) return ''; const m=Math.floor(s/60), ss=Math.round(s%60); return `${m}:${String(ss).padStart(2,'0')}`; }
+// 從影片檔案本身讀出秒數（上傳當下用）
+function videoDuration(url){
+  return new Promise(res=>{
+    const v = document.createElement('video');
+    v.preload='metadata'; v.muted=true;
+    v.onloadedmetadata = ()=>{ const d = isFinite(v.duration)?Math.round(v.duration):0; v.removeAttribute('src'); res(d); };
+    v.onerror = ()=> res(0);
+    v.src = url;
+  });
+}
 async function fetchThumbInto(m){
-  // 回傳 true 代表 m.thumb 有更新。沒縮圖的、或只存了會過期網址的，都升級成永久小圖
+  // 回傳 true 代表有更新（縮圖或秒數）。沒縮圖的、或只存了會過期網址的，都升級成永久小圖
+  let changed = false;
   try{
-    const meta = await (await fetch(`https://www.googleapis.com/drive/v3/files/${m.driveId}?fields=thumbnailLink`, { headers:{ Authorization:'Bearer '+gToken } })).json();
+    const meta = await (await fetch(`https://www.googleapis.com/drive/v3/files/${m.driveId}?fields=thumbnailLink,videoMediaMetadata(durationMillis)`, { headers:{ Authorization:'Bearer '+gToken } })).json();
+    const durMs = meta.videoMediaMetadata && meta.videoMediaMetadata.durationMillis;
+    if(durMs && !m.dur){ m.dur = Math.round(Number(durMs)/1000); changed = true; }
     let link = meta.thumbnailLink;
-    if(!link) return false;
-    link = link.replace(/=s\d+$/, '=s480');
-    try{
-      const r = await fetch(link, { headers:{ Authorization:'Bearer '+gToken } });
-      if(r.ok){
-        const data = await blobToDataURL(await r.blob());
-        m.thumb = data.length < 150000 ? data : link;
-        return true;
-      }
-    }catch(e){}
-    if(m.thumb !== link){ m.thumb = link; return true; } // 退而求其次存網址直接嘗試顯示
+    if(link){
+      link = link.replace(/=s\d+$/, '=s480');
+      try{
+        const r = await fetch(link, { headers:{ Authorization:'Bearer '+gToken } });
+        if(r.ok){
+          const data = await blobToDataURL(await r.blob());
+          m.thumb = data.length < 150000 ? data : link;
+          return true;
+        }
+      }catch(e){}
+      if(m.thumb !== link){ m.thumb = link; changed = true; } // 退而求其次存網址直接嘗試顯示
+    }
   }catch(e){}
-  return false;
+  return changed;
 }
 async function refreshThumbs(){
   if(!gToken) return;
@@ -1288,7 +1308,7 @@ async function refreshThumbs(){
   for(const m of mine.filter(x=>x.driveId && (!x.thumb || x.thumb.startsWith('http')))){
     if(await fetchThumbInto(m)) mChanged = true;
   }
-  for(const c of clips.filter(x=>x.driveId && (!x.thumb || x.thumb.startsWith('http')))){
+  for(const c of clips.filter(x=>x.driveId && (!x.thumb || x.thumb.startsWith('http') || !x.dur))){
     if(await fetchThumbInto(c)) cChanged = true;
   }
   if(mChanged){ await saveData('mine'); renderMine(); }
@@ -1693,7 +1713,8 @@ async function vaultUpload(e){
         const file = await putWithProgress(session, f, (done, total)=>{ bar.style.width = Math.round(done/total*100) + '%'; });
         const id = Date.now() + n;
         blobs[id] = URL.createObjectURL(f); // 剛上傳完直接可看
-        clips.unshift({ id, driveId:file.id, name:f.name, shotDate:shot, thumb:'', mt:Date.now() });
+        const dur = await videoDuration(blobs[id]); // 從影片檔直接讀秒數
+        clips.unshift({ id, driveId:file.id, name:f.name, shotDate:shot, thumb:'', dur, mt:Date.now() });
         ok++;
         await saveData('clips'); renderVideos();
       }catch(err){ toast(`第 ${n} 支上傳失敗：${err.message}`); }
@@ -1736,7 +1757,7 @@ async function syncVaultFromDrive(manual){
     const folder = await ensureVaultFolder();
     const params = new URLSearchParams({
       q: `'${folder}' in parents and mimeType contains 'video/' and trashed=false`,
-      fields: 'files(id,name,modifiedTime,thumbnailLink)',
+      fields: 'files(id,name,modifiedTime,thumbnailLink,videoMediaMetadata(durationMillis))',
       pageSize: '300', orderBy: 'modifiedTime desc'
     });
     let r = await fetch('https://www.googleapis.com/drive/v3/files?'+params, { headers:{ Authorization:'Bearer '+gToken } });
@@ -1748,7 +1769,8 @@ async function syncVaultFromDrive(manual){
     let added = 0;
     files.forEach(f=>{
       if(have.has(f.id) || hidden.has(f.id)) return;
-      clips.unshift({ id: Date.now()+Math.floor(Math.random()*100000), driveId:f.id, name:f.name, shotDate: shotDateFromFile(f), thumb: f.thumbnailLink||'', mt: Date.now() });
+      const durMs = f.videoMediaMetadata && f.videoMediaMetadata.durationMillis;
+      clips.unshift({ id: Date.now()+Math.floor(Math.random()*100000), driveId:f.id, name:f.name, shotDate: shotDateFromFile(f), thumb: f.thumbnailLink||'', dur: durMs?Math.round(Number(durMs)/1000):0, mt: Date.now() });
       added++;
     });
     if(added){ await saveData('clips'); renderVideos(); refreshThumbs(); }
@@ -1772,7 +1794,7 @@ function renderVideos(){
     const w = /^\d{4}-\d{2}-\d{2}$/.test(d) ? `（${WK[new Date(d+'T00:00').getDay()]}）` : '';
     const items = groups[d].sort((a,b)=> b.id-a.id).map(c=>`
       <div class="vault-item" onclick="openClip(${c.id})">
-        <div class="vault-thumb" ${c.thumb?`style="background-image:url('${(c.thumb||'').replace(/'/g,'')}')"`:''}>${c.thumb?'':'🎬'}<span class="vault-play">▶</span></div>
+        <div class="vault-thumb" ${c.thumb?`style="background-image:url('${(c.thumb||'').replace(/'/g,'')}')"`:''}>${c.thumb?'':'🎬'}<span class="vault-play">▶</span>${c.dur?`<span class="vault-dur">${fmtDur(c.dur)}</span>`:''}</div>
       </div>`).join('');
     return `<div class="tl-day"><div class="tl-date">${d}${w}　<span class="meta" style="font-weight:400">${groups[d].length} 支</span></div>
       <div class="vault-grid">${items}</div></div>`;
